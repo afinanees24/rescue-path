@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn>=0.29
+opencv-python>=4.8
+numpy>=1.26
+reportlab>=4.0     # claim PDFs
+anthropic>=0.40
+google-genai>=1.0      # only needed for --provider gemini
+ultralytics>=8.3   # YOLO people/animal detection; optional (falls back to OpenCV HOG)
