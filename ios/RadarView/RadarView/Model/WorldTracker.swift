@@ -27,8 +27,8 @@ enum TrackStatus: Equatable {
 /// - with no direction, the dot stays on its last known bearing and slides to the new distance
 struct WorldTracker {
     /// Filter time constant for small jitter (steady) and for real moves (responsive).
-    var steadyTimeConstant: TimeInterval = 0.35
-    var moveTimeConstant: TimeInterval = 0.15
+    var steadyTimeConstant: TimeInterval = 0.3
+    var moveTimeConstant: TimeInterval = 0.12
     /// Deviations smaller than this are treated as jitter.
     var jitterRadius = 0.3
     var outlierJump = 1.5

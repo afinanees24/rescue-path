@@ -2,109 +2,133 @@ import CoreGraphics
 import Foundation
 import Observation
 
-/// Firefighter-side app state: boards (BLE), the selected target source, the guidance
-/// engine, compass heading, the world-coordinate target tracker and SCAN dots.
+/// Firefighter-side app state. Zero setup: on launch it scans BLE for the boards and the
+/// beacon phone (…def9), swaps NI tokens over BLE, and ranges over UWB.
+///
+/// Direction: each valid UWB direction latches the target's absolute bearing in the gyro
+/// heading frame; between directions the bearing is latch − heading, so guidance never
+/// drops when the target leaves UWB's ±45° field. The dot is drawn from real NI data only.
 @MainActor
 @Observable
 final class RadarStore {
-    nonisolated static let range = 5.0           // meters shown on the scope
     nonisolated static let halfAngle = 45.0      // degrees (90° wedge)
-    nonisolated static let blipLifetime: TimeInterval = 30
+    nonisolated static let rangeSteps: [Double] = [5, 10, 20, 40]
+
+    /// Auto-ranging: step up when the target passes 85% of the range, down below 40%.
+    nonisolated static func nextRange(current: Double, distance: Double) -> Double {
+        var i = rangeSteps.firstIndex(of: current) ?? 0
+        while i < rangeSteps.count - 1, distance > 0.85 * rangeSteps[i] { i += 1 }
+        while i > 0, distance < 0.4 * rangeSteps[i] { i -= 1 }
+        return rangeSteps[i]
+    }
 
     /// The firefighter is the origin of the world frame.
     let origin = CGPoint.zero
-    let compass: HeadingProvider
+    let motion: MotionHeading
     let boards: BoardLink
     let guidance: GuidanceEngine
     let uwb: UWBLink
+    let steps: StepTracker
 
-    private(set) var sourceKind: SourceKind = .uwb
-    private(set) var scanning = false
+    enum BearingSource: String {
+        case none = "NONE"
+        case uwbDirection = "UWB DIRECTION"
+        case cameraAngle = "CAMERA ANGLE"
+        case trilaterationAR = "TRILAT · AR"
+        case trilaterationSteps = "TRILAT · STEPS"
+        case gyroLatch = "GYRO LATCH"
+    }
 
-    /// Eased compass heading the scope rotates with.
+    /// Eased gyro heading the scope rotates with.
     private(set) var displayHeading: Double = 0
-    /// Smoothed values the guidance rules use.
-    private(set) var fix: TargetFix = .none
-    private(set) var sourceActive = false
-    /// Steady world-coordinate target (UWB / SIM).
     private(set) var track = TrackSnapshot()
-    /// Radar source: distance only.
-    private(set) var range = RangeDisplay()
+    private(set) var hasFix = false
+    /// A valid UWB direction arrived in the last 0.6 s (else the dot runs on the gyro latch).
+    private(set) var directionLive = false
+    /// Latest distance (UWB, or RSSI estimate in FAR mode).
+    private(set) var distance: Double?
+    private(set) var phase: ScanPhase = .searching
+    /// Scope range (m): steps 5 → 10 → 20 → 40; `displayRange` eases toward it.
+    private(set) var scopeRange: Double = 5
+    private(set) var displayRange: Double = 5
     /// Distance readout that counts in 0.1 m steps.
     private(set) var countedDistance: Double?
-    private(set) var blips: [Blip] = []
     /// Eased obstacle distance (cm) and its visibility.
     private(set) var obstacleCm: Double = 0
     private(set) var obstacleVisibility: Double = 0
+    /// Where the current bearing comes from (logged on every change).
+    private(set) var bearingSource: BearingSource = .none
+    /// Trilateration status for [LOG].
+    private(set) var trilaterationInfo = "IDLE"
 
-    @ObservationIgnored private var sources: [SourceKind: TargetSource] = [:]
+    @ObservationIgnored private var latch = BearingLatch()
+    @ObservationIgnored private var tracker = WorldTracker()
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var lastTick = Date()
-    @ObservationIgnored private var tracker = WorldTracker()
-    @ObservationIgnored private var lastReadingTime: Date?
-    @ObservationIgnored private var lastBlipAt: Date = .distantPast
+    @ObservationIgnored private var lastNIAt: Date?
+    @ObservationIgnored private var lastDist: Double?
+    @ObservationIgnored private var motionGeneration = 0
     @ObservationIgnored private var lastCountAt: Date = .distantPast
+    @ObservationIgnored private var lastTokenRefreshAt: Date = .distantPast
+    /// Ever had UWB contact this run (distinguishes SEARCHING from OUT OF RANGE).
+    @ObservationIgnored private var everContact = false
+    @ObservationIgnored private var lastDirectionalAt: Date?
+    @ObservationIgnored private var arTrilat = Trilaterator()
+    @ObservationIgnored private var stepTrilat = Trilaterator()
+    @ObservationIgnored private var trilatFrame: BearingSource = .none
+    @ObservationIgnored private var lastPose: (x: Double, z: Double, fx: Double, fz: Double)?
+    @ObservationIgnored private var angleFlipped = false
+    @ObservationIgnored private var angleVotes = (agree: 0, disagree: 0)
+    /// Absolute bearing of the last real (UWB / camera) direction: the mirror hint for trilateration.
+    @ObservationIgnored private var lastDirectionalAbs: Double?
+    @ObservationIgnored private var cameraOnSince: Date?
+    @ObservationIgnored private var cameraWasOn = false
+    @ObservationIgnored private var arGeneration = 0
 
     init() {
-        compass = HeadingProvider()
+        motion = MotionHeading()
         boards = BoardLink()
         guidance = GuidanceEngine(boards: boards)
         uwb = UWBLink(role: .firefighter)
-        sources = [
-            .uwb: UWBTargetSource(link: uwb),
-            .radar: RadarTargetSource(boards: boards),
-            .sim: SimTargetSource(),
-        ]
-        guidance.inputs = { [weak self] in
-            self?.guidanceInputs() ?? GuidanceInputs(sourceActive: false)
-        }
+        steps = StepTracker()
+        // Token exchange over BLE (…def9): read the beacon's token, write ours back.
+        boards.localToken = { [weak self] in self?.uwb.localToken }
+        boards.onBeaconToken = { [weak self] data in self?.uwb.setPeerToken(data) }
+        uwb.onLocalToken = { [weak self] _ in self?.boards.sendLocalToken() }
+        uwb.onUpdate = { [weak self] in self?.niUpdate() }
+        guidance.inputs = { [weak self] in self?.guidanceInputs() ?? GuidanceInputs() }
     }
 
     // MARK: - Derived
 
-    private var source: TargetSource { sources[sourceKind]! }
+    var heading: Double { motion.heading }
 
-    /// False for the radar source: distance only, target drawn on the centre line.
-    var providesBearing: Bool { source.providesBearing }
+    /// Target bearing relative to the phone's back right now (0 ahead, + right).
+    var relativeBearing: Double? { latch.bearing(heading: heading) }
 
-    /// Live compass heading (0 until the compass reports).
-    var heading: Double { compass.hasReading ? compass.heading : 0 }
+    var isOnTarget: Bool { phase == .onTarget }
 
-    /// Target bearing relative to where the phone points now (0 ahead, + right).
-    var relativeBearing: Double? {
-        guard providesBearing, let p = track.position else { return providesBearing ? nil : (range.present ? 0 : nil) }
-        return Compass.delta(Compass.bearing(from: origin, to: p), displayHeading)
-    }
+    /// U pip: tokens exchanged and NI ranging.
+    var uwbLinked: Bool { uwb.hasPeerToken && uwb.isFresh(now: Date()) }
 
-    /// Exact distance to show (before the 0.1 m counting).
-    var shownDistance: Double? {
-        providesBearing ? track.distance : (range.present ? range.distance : nil)
-    }
-
-    /// Tracking status for the screen, for any source.
-    var status: TrackStatus {
-        if providesBearing { return track.status }
-        return range.present ? .tracking : (sourceActive ? .searching : .none)
-    }
-
-    var isOnTarget: Bool {
-        guard let d = shownDistance else { return false }
-        return d < 1.0 && (status == .tracking || status == .lastKnown)
-    }
-
+    /// The bracelets follow the dot: same distance and latched bearing.
     private func guidanceInputs() -> GuidanceInputs {
-        GuidanceInputs(us: boards.currentUS(now: Date()), distance: fix.distance,
-                       bearing: fix.bearing, sourceActive: sourceActive)
+        syncHeadingFrame()          // the guidance timer must never see a new frame with old state
+        return GuidanceInputs(us: boards.currentUS(now: Date()), distance: distance,
+                              bearing: hasFix ? relativeBearing : nil,
+                              outOfRange: phase == .outOfRange, heading: heading,
+                              usFrameTime: boards.waistUpdatedAt)
     }
 
     // MARK: - Lifecycle
 
     func start() {
         guard timer == nil else { return }
-        compass.start()
+        motion.start()
+        steps.start()
         boards.start()
+        uwb.start()
         guidance.start()
-        source.start()
         displayHeading = heading
         lastTick = Date()
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
@@ -118,38 +142,158 @@ final class RadarStore {
         timer?.invalidate()
         timer = nil
         guidance.stop()
-        source.stop()
+        uwb.stop()
         boards.stop()
+        motion.stop()
+        steps.stop()
     }
 
-    // MARK: - User actions
-
-    /// [SRC]: UWB → RADAR → SIM → UWB.
-    func cycleSource() {
-        source.stop()
-        sourceKind = sourceKind.next
-        resetTarget()
-        if timer != nil { source.start() }
+    /// [SCAN]: restart the search (keeps the last dot until new data arrives).
+    func restartScan() {
+        trilatFrame = .none
+        arTrilat.reset()
+        stepTrilat.reset()
+        uwb.stop()
+        boards.restartBeacon()
+        uwb.start()
     }
 
-    /// [SCAN]: start leaving dots; tap again to stop and clear them.
-    func toggleScan() {
-        if scanning {
-            scanning = false
-            blips.removeAll()
-        } else {
-            scanning = true
+    // MARK: - NI updates
+
+    private func niUpdate() {
+        syncHeadingFrame()
+        let now = Date()
+        let h = heading
+        let dist = uwb.distance ?? lastDist
+
+        // 1. UWB direction, 2. camera-assisted horizontal angle, 3. trilateration.
+        var rel: Double?
+        var source: BearingSource = .none
+        if let dir = uwb.direction {
+            let r = Double(atan2(dir.x, -dir.z)) * 180 / .pi
+            rel = r
+            source = .uwbDirection
+            if let ha = uwb.horizontalAngle { calibrateAngleSign(ha, against: r) }
+        } else if let ha = uwb.horizontalAngle {
+            rel = angleFlipped ? -ha : ha
+            source = .cameraAngle
+        }
+        // Trilateration only with a fresh NI distance, and only when no real direction lately
+        // (so it never fights intermittent camera angles).
+        if uwb.lastUpdateHadDistance, let d = uwb.distance { feedTrilateration(distance: d, at: now) }
+        let directionRecent = lastDirectionalAt.map { now.timeIntervalSince($0) < 0.6 } ?? false
+        if rel == nil, !directionRecent, let t = trilaterationBearing(heading: h) {
+            rel = t.rel
+            source = t.source
+        }
+
+        if let rel {
+            latch.latch(heading: h, relative: rel)
+            if !hasFix {
+                hasFix = true
+                Log.uwb(.firefighter, String(format: "direction LATCHED from %@: %+.0f° relative at %.1f m",
+                                             source.rawValue, rel, dist ?? -1))
+            }
+            if source == .uwbDirection || source == .cameraAngle {
+                lastDirectionalAt = now
+                lastDirectionalAbs = wrapDegrees(h + rel)
+            }
+        } else if hasFix {
+            source = .gyroLatch        // never clear the latch: keep steering on the gyro
+        }
+        if source != bearingSource {
+            bearingSource = source
+            Log.uwb(.firefighter, "bearing source: \(source.rawValue) at \(dist.map { String(format: "%.1f m", $0) } ?? "?")")
+        }
+
+        lastDist = dist
+        lastNIAt = now
+        everContact = true
+        if let dist {
+            tracker.ingest(distance: dist, bearing: latch.bearing(heading: h), heading: h, origin: origin, at: now)
         }
     }
 
-    private func resetTarget() {
-        fix = .none
-        range = RangeDisplay()
+    /// Heading frame changed (calibration picked another reading): rotate the latch with it
+    /// (never drop it); positions and detour headings in the old frame start over.
+    private func syncHeadingFrame() {
+        guard motion.generation != motionGeneration else { return }
+        motionGeneration = motion.generation
+        latch.shift(by: motion.lastShift)
+        if let a = lastDirectionalAbs { lastDirectionalAbs = wrapDegrees(a + motion.lastShift) }
         tracker.reset()
-        track = TrackSnapshot()
-        countedDistance = nil
-        lastReadingTime = nil
-        sourceActive = false
+        steps.reset()
+        stepTrilat.reset()
+        guidance.headingFrameChanged()
+    }
+
+    /// The camera angle's sign convention isn't documented clearly: check it against UWB
+    /// direction whenever both are present and flip it if they keep disagreeing.
+    private func calibrateAngleSign(_ angle: Double, against direction: Double) {
+        guard abs(angle) > 10, abs(direction) > 10 else { return }
+        let effective = angleFlipped ? -angle : angle
+        if (effective > 0) == (direction > 0) { angleVotes.agree += 1 } else { angleVotes.disagree += 1 }
+        let total = angleVotes.agree + angleVotes.disagree
+        guard total >= 15 else { return }
+        if Double(angleVotes.disagree) / Double(total) > 0.8 {
+            angleFlipped.toggle()
+            Log.uwb(.firefighter, "camera angle sign flipped (disagreed with UWB direction \(angleVotes.disagree)/\(total))")
+        }
+        angleVotes = (0, 0)
+    }
+
+    /// Pair the NI distance with where I am: ARKit camera position while camera assist runs,
+    /// otherwise step dead-reckoning along the gyro heading.
+    private func feedTrilateration(distance d: Double, at now: Date) {
+        if uwb.arRunning, uwb.cameraPose() == nil { return }     // brief AR hiccup: skip, keep samples
+        if let pose = uwb.cameraPose() {
+            if trilatFrame != .trilaterationAR || uwb.arGeneration != arGeneration {
+                arGeneration = uwb.arGeneration                    // new AR session = new origin
+                arTrilat.reset()
+                trilatFrame = .trilaterationAR
+            }
+            arTrilat.add(position: .init(x: pose.x, y: pose.z), distance: d, at: now)
+            lastPose = pose
+            trilaterationInfo = String(format: "AR · %d SAMPLES · SPAN %.1f M", arTrilat.count, arTrilat.span)
+        } else if steps.available {
+            if trilatFrame != .trilaterationSteps {
+                stepTrilat.reset()
+                trilatFrame = .trilaterationSteps
+            }
+            let p = steps.position
+            stepTrilat.add(position: .init(x: Double(p.x), y: Double(p.y)), distance: d, at: now)
+            trilaterationInfo = String(format: "STEPS · %d SAMPLES · SPAN %.1f M", stepTrilat.count, stepTrilat.span)
+        }
+    }
+
+    /// Bearing from the trilateration fix, relative to where the phone points now. With two
+    /// mirror candidates (walked in a straight line), take the one nearest the latched bearing.
+    private func trilaterationBearing(heading h: Double) -> (rel: Double, source: BearingSource)? {
+        var rels: [Double] = []
+        switch trilatFrame {
+        case .trilaterationAR:
+            // Only against the LIVE camera pose; a stale forward vector would latch a wrong bearing.
+            guard let pose = uwb.cameraPose() else { return nil }
+            for c in arTrilat.solve() {
+                let vx = c.x - pose.x, vz = c.y - pose.z
+                let rx = -pose.fz, rz = pose.fx              // right of forward (ARKit y up)
+                rels.append(atan2(vx * rx + vz * rz, vx * pose.fx + vz * pose.fz) * 180 / .pi)
+            }
+        case .trilaterationSteps:
+            let me = steps.position
+            for c in stepTrilat.solve() {
+                let abs = Compass.bearing(from: me, to: CGPoint(x: c.x, y: c.y))
+                rels.append(wrapDegrees(abs - h))
+            }
+        default:
+            return nil
+        }
+        guard !rels.isEmpty else { return nil }
+        if rels.count == 1 { return (rels[0], trilatFrame) }
+        // Mirror pair: pick the side of the last real direction (else the latch).
+        guard let hint = lastDirectionalAbs.map({ wrapDegrees($0 - h) }) ?? latch.bearing(heading: h) else { return nil }
+        let best = rels.min { abs(wrapDegrees($0 - hint)) < abs(wrapDegrees($1 - hint)) }!
+        return (best, trilatFrame)
     }
 
     // MARK: - 60 Hz tick
@@ -159,78 +303,109 @@ final class RadarStore {
         let dt = min(0.1, max(0, now.timeIntervalSince(lastTick)))
         lastTick = now
 
-        let h = heading
-        displayHeading = Compass.normalize(displayHeading + Compass.delta(h, displayHeading) * min(1, dt * 8))
+        syncHeadingFrame()
+        steps.tick(dt: dt, heading: heading, now: now)
+        displayHeading = wrapDegrees(displayHeading + wrapDegrees(heading - displayHeading) * min(1, dt * 15))
 
-        source.tick(SourceContext(now: now, dt: dt, firefighter: origin, heading: h,
-                                  headingReady: compass.hasReading || !compass.isAvailable))
-        let newFix = source.fix
-        if newFix != fix { fix = newFix }
-        let active = source.isActive
-        if active != sourceActive { sourceActive = active }
+        let live = uwb.lastDirectionAt.map { now.timeIntervalSince($0) < 0.6 } ?? false
+        if live != directionLive { directionLive = live }
 
-        updateTrack(now: now, heading: h)
-        updateRange(dt: dt)
+        // No direction hardware: camera assist stays on while the beacon is beyond 2 m (so
+        // direction keeps re-latching at range) and until the first latch; within 2 m it may
+        // rest, and comes back after 10 s without a direction.
+        if uwb.cameraAssistSupported, uwb.hasPeerToken {
+            let d = distance ?? lastDist ?? .infinity
+            let beyond = uwb.cameraOn ? d > 1.8 : d > 2.0
+            let starved = now.timeIntervalSince(lastDirectionalAt ?? .distantPast) > 10
+            // Once on, stay on long enough to converge and refill the latch.
+            let dwell = uwb.cameraOn && now.timeIntervalSince(cameraOnSince ?? now) < 5
+            let feeding = uwb.cameraOn && now.timeIntervalSince(lastDirectionalAt ?? .distantPast) < 3
+            let want = !hasFix || beyond || starved || dwell || feeding
+            if want != uwb.cameraOn { uwb.setCameraAssist(want) }
+        }
+        if uwb.cameraOn != cameraWasOn {
+            cameraWasOn = uwb.cameraOn
+            if uwb.cameraOn {
+                cameraOnSince = now
+                trilatFrame = .none          // new AR session segment: AR samples start over
+            }
+        }
+
+        // Token watchdog: BLE up but no NI for 4 s (or the beacon's token never arrived)
+        // → re-read its token and re-write ours.
+        if boards.beaconConnected, !uwb.permanentlyFailed, !uwb.isFresh(now: now, within: 4),
+           now.timeIntervalSince(lastTokenRefreshAt) > 5 {
+            lastTokenRefreshAt = now
+            Log.uwb(.firefighter, uwb.hasPeerToken ? "no NI for 4 s with BLE up — refreshing tokens"
+                                                   : "no beacon token yet — re-reading")
+            boards.refreshBeaconToken()
+        }
+
+        updateState(now: now, dt: dt)
         updateCount(now: now)
         updateObstacle(now: now, dt: dt)
-
-        if let oldest = blips.first, now.timeIntervalSince(oldest.time) > Self.blipLifetime {
-            blips.removeAll { now.timeIntervalSince($0.time) > Self.blipLifetime }
-        }
         boards.refreshRate(now: now)
     }
 
-    /// Feed each new raw reading into the world tracker (and SCAN), publish the result.
-    private func updateTrack(now: Date, heading h: Double) {
-        if let r = source.latestReading, r.time != lastReadingTime {
-            lastReadingTime = r.time
-            tracker.ingest(distance: r.distance, bearing: r.bearing, heading: h, origin: origin, at: r.time)
-            if scanning, let b = r.bearing, now.timeIntervalSince(lastBlipAt) >= 0.2 {
-                blips.append(Blip(position: origin.moved(bearing: h + b, distance: r.distance), time: now))
-                lastBlipAt = now
-            }
-        }
+    private func updateState(now: Date, dt: Double) {
+        let niFresh = lastNIAt.map { now.timeIntervalSince($0) < 2 } ?? false
         tracker.sampleTrail(now: now)
         let snap = TrackSnapshot(position: tracker.position, distance: tracker.distance(from: origin),
                                  status: tracker.status(now: now), trail: tracker.trail)
         if snap != track { track = snap }
-    }
 
-    /// Radar source: ease the distance-only reading; SCAN dots go on the centre line.
-    private func updateRange(dt: Double) {
-        guard !providesBearing else { return }
-        var r = range
-        if let d = fix.distance {
-            if r.visibility < 0.05 { r.distance = d } else { r.distance += (d - r.distance) * min(1, dt * 6) }
-            r.visibility += (1 - r.visibility) * min(1, dt * 5)
-            r.present = true
-            if scanning, Date().timeIntervalSince(lastBlipAt) >= 0.2 {
-                blips.append(Blip(position: origin.moved(bearing: heading, distance: d), time: Date()))
-                lastBlipAt = Date()
+        // Beyond UWB range: rough distance from the beacon link's RSSI while BLE is up.
+        let farEstimate = (!niFresh && everContact) ? boards.beaconDistanceEstimate : nil
+        let outOfRange = !niFresh && everContact && !boards.beaconConnected
+
+        let d: Double? = niFresh ? (lastDist ?? track.distance) : farEstimate
+        if d != distance { distance = d }
+
+        // Auto-ranging scope; the drawn scale eases so the dot and trail never jump.
+        if let target = d ?? track.distance {
+            let next = Self.nextRange(current: scopeRange, distance: target)
+            if next != scopeRange {
+                scopeRange = next
+                Log.uwb(.firefighter, "scope range \(Int(next)) m")
             }
-        } else {
-            r.visibility -= r.visibility * min(1, dt * 3)
-            if r.visibility < 0.01 { r.visibility = 0 }
-            r.present = false
         }
-        if r != range { range = r }
+        if abs(displayRange - scopeRange) > 0.01 {
+            displayRange += (scopeRange - displayRange) * min(1, dt * 4)
+        }
+
+        let newPhase: ScanPhase
+        if !niFresh {
+            newPhase = farEstimate != nil ? .far : (outOfRange ? .outOfRange : .searching)
+        } else if let d, d < 1.0 {
+            newPhase = .onTarget
+        } else if !hasFix {
+            newPhase = .searchingRanged
+        } else {
+            newPhase = directionLive ? .tracking : .gyro
+        }
+        if newPhase != phase {
+            phase = newPhase
+            Log.uwb(.firefighter, "state: \(newPhase.label)")
+        }
     }
 
     /// Count the readout toward the real distance in 0.1 m steps (every 40 ms).
     private func updateCount(now: Date) {
-        guard let d = shownDistance else {
+        guard let d = distance else {
             if countedDistance != nil { countedDistance = nil }
             return
         }
         let goal = (d * 10).rounded() / 10
         guard let c = countedDistance else { countedDistance = goal; return }
         guard abs(goal - c) >= 0.05, now.timeIntervalSince(lastCountAt) >= 0.04 else { return }
-        countedDistance = ((c + (goal > c ? 0.1 : -0.1)) * 10).rounded() / 10
+        let step = abs(goal - c) > 3 ? (goal - c) / 4 : (goal > c ? 0.1 : -0.1)
+        countedDistance = ((c + step) * 10).rounded() / 10
         lastCountAt = now
     }
 
     private func updateObstacle(now: Date, dt: Double) {
-        if let us = boards.currentUS(now: now), us > 0 {
+        // Red arc straight ahead only when something is within 1.5 m.
+        if let us = boards.currentUS(now: now), us > 0, us < 150 {
             let cm = Double(us)
             if obstacleVisibility < 0.05 { obstacleCm = cm } else { obstacleCm += (cm - obstacleCm) * min(1, dt * 10) }
             obstacleVisibility += (1 - obstacleVisibility) * min(1, dt * 8)

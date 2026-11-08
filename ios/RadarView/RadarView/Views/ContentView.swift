@@ -4,23 +4,34 @@ import UIKit
 /// Launch: pick a role. FIREFIGHTER runs the radar + bracelets; BEACON is the hidden
 /// person's phone and only joins the UWB session.
 struct ContentView: View {
-    @State private var role: AppRole?
+    /// Each phone remembers its role and opens straight into it.
+    /// (A `-role firefighter|beacon` launch argument overrides it.)
+    @State private var role: AppRole? = AppRole(rawValue: UserDefaults.standard.string(forKey: Self.roleKey) ?? "")
+
+    static let roleKey = "role"
 
     var body: some View {
         Group {
             switch role {
             case nil:
-                RoleSelectView { role = $0 }
+                RoleSelectView { choose($0) }
             case .firefighter:
-                FirefighterRoot { role = $0 }
+                FirefighterRoot { choose($0) }
             case .beacon:
-                BeaconScreen { role = nil }
+                BeaconScreen { choose(nil) }
             }
         }
         .onAppear {
-            // iOS pauses BLE and NI when the app backgrounds; keep it awake and in front.
+            // iOS pauses BLE, NI and ARKit when the app backgrounds; keep it awake and in front.
             UIApplication.shared.isIdleTimerDisabled = true
+            if let role { choose(role) }      // also remembers a role given as a launch argument
         }
+    }
+
+    private func choose(_ r: AppRole?) {
+        if let r { UserDefaults.standard.set(r.rawValue, forKey: Self.roleKey) }
+        else { UserDefaults.standard.removeObject(forKey: Self.roleKey) }
+        role = r
     }
 }
 

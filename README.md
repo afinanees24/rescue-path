@@ -73,19 +73,16 @@ The phone side lives in `ios/RadarView` (Xcode project `RadarView.xcodeproj`, sc
 ```
 ios/RadarView/RadarView/
   Services/BoardLink.swift       BLE to Waist, Bracelet-L, Bracelet-R (contract above)
-  Services/UWBLink.swift         Nearby Interaction + Multipeer token exchange
-  Services/TargetSources.swift   UWB (default), RADAR (rd when rp == 1), SIM
+  Services/UWBLink.swift         Nearby Interaction session, camera-assist control
+  Services/BeaconPeripheral.swift  beacon phone: BLE token exchange (…def9 / …defA / …defB)
+  Services/MotionHeading.swift   gyro heading from the attitude matrix
+  Model/BearingLatch.swift       latched absolute bearing between UWB directions
   Model/GuidanceEngine.swift     rule table, 100 ms tick, bracelet writes, rule log
   Model/WorldTracker.swift       world-coordinate target: EMA + outlier rejection, trail
   Views/RadarScreen.swift        the firefighter's single radar screen
   Views/LogSheet.swift           [LOG]: bracelet commands, UWB steps, TEST LEFT/RIGHT, role switch
   Views/BeaconScreen.swift       the hidden person's phone
 ```
-
-> **Bracelet protocol status:** the app currently sends the earlier 2-byte
-> *intensity + duration* commands (as flashed in commit `b9ea988`) and runs the
-> 7-rule table from the app spec. The cue + param protocol and three-cue rules
-> described above are not wired into the app yet.
 
 ### Running it on an iPhone
 
@@ -102,9 +99,12 @@ xcodebuild -project ios/RadarView/RadarView.xcodeproj -scheme RadarView -destina
 
 ### Using it
 
-- **Roles:** at launch pick **FIREFIGHTER** (radar + bracelets; phone faces forward) or **BEACON** (the hidden person's phone; it only joins the UWB session and shows "BEACON ACTIVE" with the distance). Both phones need a U1/U2 chip.
-- **One screen, Find My-style:** heading-up 90° / 5 m wedge with a light-blue ping. Target "01" is a teal crosshair at its exact position, held in world coordinates (compass heading + UWB bearing, smoothed, outliers rejected), so turning rotates it around you. A dotted trail shows its last ~1.5 s. When direction drops out it stays dimmed as "01 · LAST KNOWN"; outside the wedge a chevron on the edge points the way to turn. Facing it (within 15°) lights the centre line teal.
-- **Footer:** big distance counting in 0.1 m steps, the direction in words ("TO YOUR LEFT · 48°"), the cue actually sent to the bracelets, and `US · RX`. Under 1 m: "ON TARGET · 0.8 M". No fix: "MOVE AROUND · SWEEP SLOWLY".
-- **Controls:** `[SCAN]` leaves world-fixed dots (tap again to stop and clear), `[SRC …]` cycles UWB → RADAR → SIM, `[LOG]` opens bracelet commands, UWB state steps, TEST LEFT / TEST RIGHT and the role switch.
-- **SIM:** a target ~4.3 m ahead walks toward you at ~0.6 m/s with a slight wobble, then resets.
-- **UWB discovery:** Multipeer service type `ff-uwb` (Info.plist lists `_ff-uwb._tcp` and `_ff-uwb._udp`).
+Zero setup: open the app on both phones. Each remembers its role (FIREFIGHTER or BEACON).
+
+- **Token exchange over BLE (no Wi-Fi, no Multipeer):** the beacon phone is a BLE peripheral advertising service `12345678-1234-5678-1234-56789abcdef9`. `…defA` (read + notify) holds its archived NI discovery token; `…defB` (write, with response) receives the firefighter's. The firefighter's central (already scanning for the boards on `…def0`) also scans for `…def9`, reads `…defA`, runs its NI session, and writes its own token to `…defB`. Invalidations and BLE drops recover automatically.
+- **Direction:** if the phone reports `supportsDirectionMeasurement`, UWB alone. Otherwise camera assistance (shared ARSession) runs only until the first valid direction, then turns off; it comes back after 10 s without one.
+- **Gyro latch:** heading comes from CoreMotion (`.xArbitraryZVertical`, 50 Hz), projecting the phone's back axis onto the horizontal plane (no Euler yaw). Each valid UWB direction latches the target's absolute bearing; between directions the bearing is latch − heading, so guidance keeps working outside UWB's ±45° field.
+- **Bracelets:** `[cue, param]` to `…def1` without response (0 off · 1 forward · 2 stop · 3 turn with intensity 70–255). Stop under 60 cm ultrasonic or 1 m to the target; turn when more than 15° off (forward until 25° once aligned); off with no fix. Written on change and re-sent every 1 s (the boards stop after 2 s of silence). Only `us` is read from the waist JSON.
+- **Any distance:** the scope auto-ranges 5 → 10 → 20 → 40 m. Without UWB for 2 s but with the BLE link up it shows **FAR · BLE** with a rough RSSI distance and keeps steering toward the last bearing; with neither, **OUT OF RANGE** and the bracelets go quiet.
+- **Mounting:** firefighter phone on the chest, screen facing you, back facing forward (UWB looks out of the back). Beacon at chest height or in a front pocket, top up, no metal in between.
+- **Testing:** launch argument `-role firefighter|beacon` picks the role; every connection step is logged (subsystem `com.firefighterhaptics.RadarView`, category `UWB`), to stderr, and to `Documents/uwb-log.txt` in the app container for walk tests.

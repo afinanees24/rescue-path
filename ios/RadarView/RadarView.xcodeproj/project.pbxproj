@@ -173,8 +173,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "RadarView-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "FF Radar";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "FF Radar connects over Bluetooth to the waist unit and the two bracelets.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FF Radar uses your location and compass to point the radar cone in the direction you are facing.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "FF Radar connects over Bluetooth to the waist unit, the bracelets and the other phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
@@ -186,7 +185,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.firefighterhaptics.RadarView;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -204,8 +203,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "RadarView-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "FF Radar";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "FF Radar connects over Bluetooth to the waist unit and the two bracelets.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FF Radar uses your location and compass to point the radar cone in the direction you are facing.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "FF Radar connects over Bluetooth to the waist unit, the bracelets and the other phone.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
@@ -217,7 +215,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.firefighterhaptics.RadarView;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

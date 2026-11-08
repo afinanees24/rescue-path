@@ -5,14 +5,9 @@
 	<!-- Merged with the build-setting–generated Info.plist (GENERATE_INFOPLIST_FILE = YES). -->
 	<key>NSNearbyInteractionUsageDescription</key>
 	<string>FF Radar uses Ultra Wideband to measure the distance and direction to the beacon phone.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>FF Radar finds the other phone on the local network to start the Ultra Wideband session.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>FF Radar uses your steps to work out the direction to the beacon when Ultra Wideband can't.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>On some iPhones, Ultra Wideband needs the camera to work out which direction the beacon is in.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_ff-uwb._tcp</string>
-		<string>_ff-uwb._udp</string>
-	</array>
 </dict>
 </plist>
