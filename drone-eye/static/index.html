@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drone-Eye · Wildfire Survey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#E6E6E2; --surface:#F6F6F3; --chip:#ECECE8; --ink:#1E221F; --muted:#5E625E; --lime:#D4F53C;
+  --none:#2E6B4A; --light:#7A5F0C; --heavy:#B5503F; --destroyed:#9B2D27; --unknown:#6B6F6B;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Outfit,system-ui,-apple-system,Segoe UI,sans-serif}
+button{font:inherit;color:inherit;cursor:pointer}
+.wrap{padding:18px;max-width:1560px;margin:0 auto}
+.app{background:var(--surface);border-radius:30px;padding:14px;display:flex;flex-wrap:wrap;gap:14px;box-shadow:0 30px 80px rgba(30,34,31,.10)}
+
+/* ---------- left stage ---------- */
+.stage{flex:999 1 620px;min-width:0;position:relative;border-radius:22px;background-color:var(--surface);
+  background-image:radial-gradient(circle,rgba(30,34,31,.13) 1px,transparent 1.4px);background-size:18px 18px;
+  padding:20px 24px;display:flex;flex-direction:column;min-height:calc(100vh - 64px);overflow:hidden}
+.top{display:flex;align-items:center;gap:12px;position:relative;z-index:3}
+.logo{width:44px;height:44px;border-radius:12px;background:var(--chip);display:flex;align-items:center;justify-content:center}
+.brand{font-size:19px}
+.status{font-size:13px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px 14px;margin-left:8px}
+.status b{font-weight:500;color:var(--ink)}
+.warnchip{background:#F6E2B8;color:#5A3E00;border-radius:999px;padding:2px 10px}
+.spacer{flex:1}
+.iconbtn{width:44px;height:44px;border-radius:12px;border:0;background:var(--chip);display:flex;align-items:center;justify-content:center;transition:background .2s,transform .15s;position:relative}
+.iconbtn:hover{background:#E0E0DA}
+.iconbtn:active{transform:scale(.95)}
+.iconbtn.on{background:#FFFFFF;box-shadow:0 2px 10px rgba(30,34,31,.10)}
+.badge{position:absolute;top:5px;right:5px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--heavy);color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.titleblock{margin-top:22px;position:relative;z-index:3;max-width:70%}
+h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;letter-spacing:-.01em;white-space:pre-line}
+.meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px}
+.meta .sub{font-size:15px;color:var(--muted)}
+.pill{font-size:14px;font-weight:500;color:#fff;border-radius:999px;padding:4px 12px;transition:background .6s}
+.dots::after{content:'';animation:dots 1.4s steps(4) infinite}
+@keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+.views{position:absolute;left:24px;top:300px;display:flex;flex-direction:column;gap:8px;z-index:3}
+
+.hero{position:relative;flex:1;min-height:440px}
+.view{position:absolute;inset:0;transition:opacity .45s,transform .45s}
+.view.hidden{opacity:0;pointer-events:none;transform:scale(.98)}
+.scene{position:absolute;left:0;right:0;top:0;height:440px;perspective:1100px;perspective-origin:50% 35%}
+.tilt{position:absolute;left:50%;top:52%;width:0;height:0;transform-style:preserve-3d;transform:rotateX(-17deg)}
+.spin{position:absolute;width:0;height:0;transform-style:preserve-3d;animation:spinY 30s linear infinite}
+.face{position:absolute;left:50%;top:50%;transition:transform 1.2s cubic-bezier(.3,.7,.2,1),opacity .9s,background .9s,border-color .9s}
+.fog{position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(to bottom,rgba(246,246,243,0),var(--surface));pointer-events:none}
+.model{transition:opacity .8s}
+.model.pending{opacity:.45}
+.scene{pointer-events:none;z-index:2}
+.webgl .tilt,.webgl #smoke,.webgl #embers,.webgl .fog{display:none}
+.scanring{position:absolute;left:50%;top:48%;width:340px;height:340px;margin:-170px 0 0 -170px;border-radius:50%;border:1px dashed rgba(30,34,31,.35);animation:spinZ 8s linear infinite;display:none}
+.pendingnote{position:absolute;left:50%;top:78%;transform:translateX(-50%);font-size:15px;color:var(--muted);display:none}
+.is-pending .scanring,.is-pending .pendingnote{display:block}
+.smoke{position:absolute;top:0;width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,rgba(90,86,82,.55),rgba(90,86,82,0) 70%);filter:blur(6px);animation:smokeRise 6s ease-out infinite}
+.ember{position:absolute;top:0;width:5px;height:5px;border-radius:50%;background:#FF8A3D;box-shadow:0 0 8px 2px rgba(255,138,61,.7);animation:emberRise 2.6s ease-out infinite}
+.fx{position:absolute;left:50%;width:0;height:0;transition:opacity .8s}
+.lbl{position:absolute;z-index:3;width:auto;min-width:130px;max-width:180px;transition:opacity .5s;background:rgba(246,246,243,.78);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-radius:14px;padding:8px 12px;pointer-events:none}
+.lbl .t{font-size:19px;margin-top:4px}
+.lbl .v{font-size:14px;color:var(--muted);transition:color .4s}
+.lbl.flash .v{animation:flashv 1.2s ease}
+@keyframes flashv{0%{color:var(--ink);transform:translateX(6px)}100%{color:var(--muted);transform:none}}
+.personlbl{position:absolute;right:4%;top:300px;z-index:3;display:flex;align-items:center;gap:12px;transition:opacity .5s;background:rgba(246,246,243,.78);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border-radius:14px;padding:8px 12px;pointer-events:none}
+.bigstat{position:absolute;left:0;bottom:4px;z-index:3;pointer-events:none}
+.bigstat .n{font-size:64px;font-weight:300;line-height:1}
+.camimg{position:absolute;inset:10px 0 40px 70px;width:calc(100% - 70px);height:calc(100% - 50px);object-fit:contain;border-radius:18px;background:#111}
+#map{position:absolute;inset:10px 0 40px 70px;border-radius:18px;overflow:hidden}
+.mapnote{position:absolute;left:90px;top:30px;z-index:500;background:#fff;border-radius:10px;padding:6px 10px;font-size:13px}
+
+.flight{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:12px;position:relative;z-index:3}
+.flight .lab{font-size:15px;min-width:100px}
+.segs{flex:1 1 320px;display:flex;gap:4px;height:44px;align-items:stretch;position:relative}
+.seg{flex:1;border:0;border-radius:6px;background:#DADAD4;position:relative;transition:background .6s,transform .2s}
+.seg:hover{transform:translateY(-2px)}
+.seg.cur::after{content:'';position:absolute;left:50%;top:-9px;width:10px;height:10px;margin-left:-5px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 2px rgba(30,34,31,.3);animation:halo 2s ease-out infinite}
+.btn{height:44px;border-radius:12px;border:0;padding:0 16px;font-size:15px;background:var(--chip);transition:background .2s,transform .15s}
+.btn:hover{background:#E0E0DA}
+.btn:active{transform:scale(.97)}
+.btn.dark{background:var(--ink);color:var(--surface)}
+.btn.dark:hover{background:#333833}
+.btn.on{background:var(--ink);color:var(--surface)}
+.done{font-size:14px;color:var(--muted)}
+
+/* ---------- right tiles ---------- */
+.tiles{flex:1 1 560px;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-content:start}
+.tile{position:relative;overflow:hidden;border-radius:22px;padding:20px;display:flex;flex-direction:column;transition:transform .35s cubic-bezier(.2,.7,.2,1),background .8s;animation:rise .8s cubic-bezier(.2,.7,.2,1) both}
+.tile:hover{transform:translateY(-3px)}
+.tile > *{position:relative}
+.blobs{position:absolute !important;inset:-25%;filter:blur(34px);animation:drift 14s ease-in-out infinite alternate;pointer-events:none}
+.tile .k{font-size:14px;display:flex;justify-content:space-between;align-items:center;gap:8px;white-space:nowrap}
+.tile .num{font-size:60px;font-weight:300;line-height:1}
+.tile .numrow{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:6px}
+.tile .unit{font-size:17px}
+.row3{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.t-green{grid-row:span 2;background:#3E7A45;color:#fff;min-height:540px}
+.t-help{background:#A8443A;color:#fff;min-height:263px}
+.t-help.calm{background:#4F6B60}
+.t-pay{background:#E8C653;color:#262010;min-height:263px}
+.t-safe{background:#9AA3B3;color:var(--ink);min-height:230px}
+.t-cam{background:#2A2724;color:#fff;min-height:230px;padding:0;cursor:pointer;border:0;text-align:left}
+.t-drone{background:#EDEFE8;color:var(--ink);min-height:230px}
+.legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px;font-size:13px;margin-top:auto}
+.legend span{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}
+.alist{display:flex;flex-direction:column;gap:6px;font-size:15px;margin-top:8px}
+.arow{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.35);padding-top:7px;animation:slidein .5s cubic-bezier(.2,.7,.2,1) both}
+.arow .w{min-width:0}
+.arow .w div:last-child{font-size:13px;opacity:.9}
+.ack{border:1px solid rgba(255,255,255,.6);background:transparent;color:#fff;border-radius:9px;padding:6px 10px;font-size:13px;min-height:36px}
+.whitebtn{align-self:flex-start;margin-top:auto;height:44px;border-radius:12px;border:0;background:#fff;color:#8E352E;padding:0 18px;font-size:15px;font-weight:500}
+.camtile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.92}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:13px;background:rgba(20,18,16,.55);border-radius:999px;padding:4px 10px}
+.draw{stroke-dasharray:700;animation:draw 2.4s cubic-bezier(.4,0,.2,1) both}
+.lime{width:12px;height:12px;border-radius:50%;background:var(--lime);animation:halo 2s ease-out infinite;display:inline-block}
+.whitepulse{animation:haloW 1.8s ease-out infinite}
+.rotor{animation:spinZ .35s linear infinite}
+.bob{position:absolute;width:0;height:0;transform-style:preserve-3d;animation:bob 3.2s ease-in-out infinite}
+
+/* toast */
+.toasts{position:fixed;right:24px;top:24px;display:flex;flex-direction:column;gap:10px;z-index:9999}
+.toast{background:var(--ink);color:#fff;border-radius:16px;padding:14px 16px;min-width:280px;max-width:380px;box-shadow:0 14px 40px rgba(0,0,0,.25);animation:toastin .5s cubic-bezier(.2,.7,.2,1) both;display:flex;gap:12px;align-items:flex-start}
+.toast.out{animation:toastout .4s ease both}
+.toast .b{font-size:15px}
+.toast .s{font-size:13px;opacity:.8}
+
+@keyframes spinY{from{transform:rotateY(0)}to{transform:rotateY(360deg)}}
+@keyframes spinZ{from{transform:rotateZ(0)}to{transform:rotateZ(360deg)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes drift{from{transform:translate(-4%,-3%) scale(1)}to{transform:translate(4%,3%) scale(1.08)}}
+@keyframes rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@keyframes draw{from{stroke-dashoffset:700}to{stroke-dashoffset:0}}
+@keyframes halo{0%{box-shadow:0 0 0 0 rgba(212,245,60,.75)}70%{box-shadow:0 0 0 14px rgba(212,245,60,0)}100%{box-shadow:0 0 0 0 rgba(212,245,60,0)}}
+@keyframes haloW{0%{box-shadow:0 0 0 0 rgba(255,255,255,.7)}70%{box-shadow:0 0 0 12px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+@keyframes smokeRise{0%{opacity:0;transform:translate(0,40px) scale(.6)}25%{opacity:.55}100%{opacity:0;transform:translate(30px,-150px) scale(1.6)}}
+@keyframes emberRise{0%{opacity:0;transform:translate(0,0)}20%{opacity:1}100%{opacity:0;transform:translate(14px,-120px)}}
+@keyframes slidein{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+@keyframes toastin{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+@keyframes toastout{to{opacity:0;transform:translateX(40px)}}
+@media (max-width:760px){.titleblock{max-width:100%}.views{top:auto;bottom:120px}.lbl{display:none}.row3{grid-template-columns:1fr}.tiles{grid-template-columns:1fr}.t-green{grid-row:auto}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="app">
+
+<!-- ================= LEFT: the home in view ================= -->
+<section class="stage" aria-label="Home in view">
+  <div class="top">
+    <span class="logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.3" aria-hidden="true"><circle cx="12" cy="12" r="2.2"/><circle cx="5" cy="5" r="2.6"/><circle cx="19" cy="5" r="2.6"/><circle cx="5" cy="19" r="2.6"/><circle cx="19" cy="19" r="2.6"/><path d="M7 7l3.4 3.4M17 7l-3.4 3.4M7 17l3.4-3.4M17 17l-3.4-3.4"/></svg></span>
+    <span class="brand">Drone-Eye</span>
+    <span class="status" id="status"></span>
+    <span class="spacer"></span>
+    <button class="iconbtn" id="bell" aria-label="Help needed alerts"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="badge" id="bellCount" hidden>0</span></button>
+    <button class="iconbtn" aria-label="Download claims spreadsheet" title="Download claims spreadsheet" onclick="location.href='/api/report.csv'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 19h14"/></svg></button>
+  </div>
+
+  <div class="titleblock">
+    <h1 id="addr">Waiting for the drone…</h1>
+    <div class="meta">
+      <span class="sub" id="sub">Home in view</span>
+      <span class="pill" id="pill" style="background:var(--unknown)">Checking</span>
+    </div>
+  </div>
+
+  <nav class="views" aria-label="Choose view">
+    <button class="iconbtn on" data-view="house" aria-label="3D house view" title="3D house"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg></button>
+    <button class="iconbtn" data-view="camera" aria-label="Live camera view" title="Live camera"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="3"/><circle cx="12" cy="12.5" r="3.5"/></svg></button>
+    <button class="iconbtn" data-view="map" aria-label="Map view" title="Map"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
+  </nav>
+
+  <div class="hero" id="hero">
+    <!-- 3D house -->
+    <div class="view" id="vHouse">
+      <div id="three" aria-label="3D model of the house showing its damage, drag to look around" role="img" style="position:absolute;left:60px;right:0;top:-70px;bottom:20px;z-index:1;-webkit-mask-image:radial-gradient(ellipse 58% 56% at 50% 54%,#000 62%,transparent 100%);mask-image:radial-gradient(ellipse 58% 56% at 50% 54%,#000 62%,transparent 100%)"></div>
+      <div class="scene" aria-hidden="true">
+        <div class="tilt"><div class="spin"><div class="model" id="model">
+          <div class="face" id="floor"></div>
+          <div class="face" id="wFront"><div id="win1"></div><div id="door"></div><div id="win2"></div></div>
+          <div class="face" id="wBack"></div>
+          <div class="face" id="wLeft"></div>
+          <div class="face" id="wRight"></div>
+          <div class="face" id="roofF"></div>
+          <div class="face" id="roofB"></div>
+          <div class="face" id="gabL"></div>
+          <div class="face" id="gabR"></div>
+          <div class="face" id="ch0"></div><div class="face" id="ch1"></div><div class="face" id="ch2"></div><div class="face" id="ch3"></div>
+          <div class="face" id="car"></div>
+          <div class="face lime" id="personDot" style="margin:-6px 0 0 -6px;transform:translate3d(175px,50px,110px);opacity:0"></div>
+        </div></div></div>
+        <div class="fx" id="smoke" style="top:70px;opacity:0">
+          <div class="smoke" style="left:-10px"></div><div class="smoke" style="left:30px;width:110px;height:110px;animation-delay:1.6s"></div>
+          <div class="smoke" style="left:-40px;width:80px;height:80px;animation-delay:3.1s"></div><div class="smoke" style="left:10px;animation-delay:4.4s"></div>
+        </div>
+        <div class="fx" id="embers" style="top:190px;opacity:0">
+          <div class="ember" style="left:-60px"></div><div class="ember" style="left:-20px;animation-delay:.7s"></div><div class="ember" style="left:25px;animation-delay:1.3s"></div>
+          <div class="ember" style="left:60px;animation-delay:.4s"></div><div class="ember" style="left:5px;animation-delay:1.9s"></div>
+        </div>
+        <div class="scanring"></div>
+        <div style="position:absolute;right:8px;bottom:6px;font-size:12px;color:var(--muted)">Drag to look around</div>
+        <div class="pendingnote">The AI is checking this home<span class="dots"></span></div>
+        <div class="fog"></div>
+      </div>
+
+      <div class="lbl" id="lRoof" style="right:2%;top:30px">
+        <svg width="34" height="26" viewBox="0 0 34 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 14L17 3l15 11"/><path d="M6 12v12h22V12" stroke-dasharray="3 3"/></svg>
+        <div class="t">Roof</div><div class="v">—</div>
+      </div>
+      <div class="lbl" id="lWalls" style="right:2%;top:160px">
+        <svg width="30" height="26" viewBox="0 0 30 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><rect x="2" y="4" width="26" height="20"/><path d="M2 11h26M2 18h26M10 4v7M20 11v7M10 18v6"/></svg>
+        <div class="t">Walls</div><div class="v">—</div>
+      </div>
+      <div class="lbl" id="lGarage" style="left:70px;top:110px">
+        <svg width="34" height="22" viewBox="0 0 34 22" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 20V8l15-6 15 6v12"/><path d="M9 20v-8h16v8"/></svg>
+        <div class="t">Garage &amp; car</div><div class="v">—</div>
+      </div>
+      <div class="personlbl" id="personLbl" style="opacity:0">
+        <span class="lime"></span><span style="width:70px;height:1px;background:#1E221F;opacity:.4"></span>
+        <div><div style="font-size:34px;font-weight:300;line-height:1" id="pN">0</div><div style="font-size:15px" id="pWhat">may need help</div><div style="font-size:13px;color:var(--muted)" id="pHow"></div></div>
+      </div>
+      <div class="bigstat">
+        <div class="n" id="pct">—</div>
+        <div style="font-size:17px;margin-top:4px" id="pctCap">waiting for the first look</div>
+        <div style="font-size:14px;color:var(--muted)" id="sure"></div>
+      </div>
+    </div>
+
+    <!-- live camera -->
+    <div class="view hidden" id="vCamera"><img class="camimg" id="camBig" alt="Live drone camera with detection boxes" data-src="/video.mjpg"></div>
+    <!-- map -->
+    <div class="view hidden" id="vMap"><div id="map"></div></div>
+  </div>
+
+  <div class="flight">
+    <span class="lab">Today’s flight</span>
+    <div class="segs" id="segs" role="group" aria-label="Homes on this survey, click one to fly there"></div>
+    <span class="done" id="doneTxt"></span>
+  </div>
+  <div class="flight" style="margin-top:10px">
+    <button class="btn" id="prevBtn">← Previous home</button>
+    <button class="btn dark" id="nextBtn">Next home →</button>
+    <button class="btn" id="tourBtn">Auto-fly</button>
+    <button class="btn" id="recheckBtn">Re-check this home</button>
+  </div>
+</section>
+
+<!-- ================= RIGHT: survey tiles ================= -->
+<section class="tiles" aria-label="Survey summary">
+  <article class="tile t-green" style="animation-delay:.05s">
+    <div class="blobs" style="background:radial-gradient(circle at 80% 85%,#9BC77A 0,rgba(155,199,122,0) 45%),radial-gradient(circle at 15% 10%,#2C5E35 0,rgba(44,94,53,0) 50%),radial-gradient(circle at 60% 55%,#5E9B5A 0,rgba(94,155,90,0) 50%)"></div>
+    <div class="k"><span>Street progress</span><span id="area"></span></div>
+    <div class="numrow"><span class="num" id="checked">0</span><span class="unit" id="checkedOf">of 0 homes checked</span></div>
+    <div style="flex:1;perspective:700px;display:flex;align-items:center;justify-content:center;min-height:250px" aria-hidden="true">
+      <div style="width:0;height:0;position:relative;transform-style:preserve-3d;transform:rotateX(-14deg) rotateZ(8deg)">
+        <div class="spin" style="animation-duration:14s" id="sphere"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:#fff"></span><b style="font-weight:400" id="cD">0</b>&nbsp;destroyed</span>
+      <span><span class="dot" style="background:rgba(255,255,255,.65)"></span><b style="font-weight:400" id="cH">0</b>&nbsp;heavy damage</span>
+      <span><span class="dot" style="border:1px solid #fff"></span><b style="font-weight:400" id="cL">0</b>&nbsp;light damage</span>
+      <span><span class="dot" style="background:var(--lime)"></span><b style="font-weight:400" id="cN">0</b>&nbsp;no damage</span>
+    </div>
+  </article>
+
+  <article class="tile t-help" id="helpTile" style="animation-delay:.12s">
+    <div class="blobs" style="background:radial-gradient(circle at 85% 90%,#E89A6B 0,rgba(232,154,107,0) 45%),radial-gradient(circle at 10% 10%,#8E352E 0,rgba(142,53,46,0) 50%),radial-gradient(circle at 90% 20%,#C6604C 0,rgba(198,96,76,0) 40%)"></div>
+    <div class="k"><span>Help needed</span><span class="whitepulse" id="helpPulse" style="width:10px;height:10px;border-radius:50%;background:#fff"></span></div>
+    <div class="numrow"><span class="num" id="helpN">0</span><span class="unit" id="helpUnit">people may be in danger</span></div>
+    <div class="alist" id="alist"></div>
+    <button class="whitebtn" id="sendBtn">Send rescue team ↗</button>
+  </article>
+
+  <article class="tile t-pay" style="animation-delay:.18s">
+    <div class="blobs" style="background:radial-gradient(circle at 15% 85%,#F3E27A 0,rgba(243,226,122,0) 45%),radial-gradient(circle at 85% 15%,#E6A45A 0,rgba(230,164,90,0) 45%),radial-gradient(circle at 70% 80%,#D9CF8E 0,rgba(217,207,142,0) 45%)"></div>
+    <div class="k"><span>Likely insurance payout</span><span id="payTag"></span></div>
+    <div class="numrow" style="justify-content:space-between"><span class="num" style="font-size:52px" id="pay">—</span></div>
+    <svg viewBox="0 0 300 110" width="100%" style="margin-top:auto;overflow:visible" aria-hidden="true" id="wave">
+      <path class="draw" d="M8 70 C40 20 70 120 100 70 S160 20 190 70 S250 120 288 52" fill="none" stroke="#fff" stroke-width="1.2"/>
+      <path class="draw" d="M8 70 C40 35 70 105 100 70 S160 35 190 70 S250 105 288 52" fill="none" stroke="#fff" stroke-width="1" style="animation-delay:.2s"/>
+      <path class="draw" d="M8 70 C40 48 70 92 100 70 S160 48 190 70 S250 92 288 52" fill="none" stroke="#fff" stroke-width="1" style="animation-delay:.4s"/>
+      <path class="draw" d="M8 70 C40 8 70 132 100 70 S160 8 190 70 S250 132 288 52" fill="none" stroke="#fff" stroke-width=".8" style="animation-delay:.6s"/>
+      <circle cx="8" cy="70" r="4" fill="#fff"/><circle cx="288" cy="52" r="5" fill="#D4F53C"/>
+    </svg>
+    <div style="display:flex;justify-content:space-between;font-size:14px;margin-top:6px"><span id="payLo"></span><span id="payHi"></span></div>
+  </article>
+
+  <div class="row3">
+    <article class="tile t-safe" style="animation-delay:.24s">
+      <div class="blobs" style="background:radial-gradient(circle at 80% 10%,#E8A27E 0,rgba(232,162,126,0) 50%),radial-gradient(circle at 20% 15%,#E3BFA6 0,rgba(227,191,166,0) 45%),radial-gradient(circle at 50% 95%,#6F7F95 0,rgba(111,127,149,0) 55%)"></div>
+      <div class="k"><span>Safe to go in?</span></div>
+      <div style="font-size:34px;font-weight:300;line-height:1.1" id="safeWord">—</div>
+      <svg viewBox="0 0 200 110" width="100%" style="margin-top:auto;overflow:visible" aria-hidden="true">
+        <path class="draw" d="M16 92 A23 40 0 0 1 62 92" fill="none" stroke="#fff" stroke-width="1.2"/>
+        <path class="draw" d="M16 92 A48 68 0 0 1 112 92" fill="none" stroke="#fff" stroke-width="1" style="animation-delay:.2s"/>
+        <path class="draw" d="M16 92 A78 88 0 0 1 172 92" fill="none" stroke="#fff" stroke-width="1" style="animation-delay:.4s"/>
+        <circle cx="16" cy="92" r="3.5" fill="#fff"/><circle cx="62" cy="92" r="3.5" fill="#fff"/><circle cx="112" cy="92" r="3.5" fill="#fff"/><circle cx="172" cy="92" r="3.5" fill="#fff"/>
+        <circle id="safeDot" cx="16" cy="92" r="6.5" fill="#D4F53C" style="transition:cx .8s cubic-bezier(.2,.7,.2,1)"/>
+      </svg>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#fff;white-space:nowrap"><span>Safe</span><span>Keep out</span></div>
+      <div style="font-size:13px;margin-top:6px;min-height:34px" id="hazards"></div>
+    </article>
+
+    <button class="tile t-cam camtile" id="camTile" style="animation-delay:.3s" aria-label="Open live drone camera">
+      <img id="camSmall" alt="" src="/video.mjpg">
+      <span style="position:absolute;left:0;right:0;bottom:0;height:60%;background:linear-gradient(to top,rgba(20,18,16,.8),rgba(20,18,16,0))"></span>
+      <span class="live" style="position:absolute;left:14px;top:14px"><span class="whitepulse" style="width:8px;height:8px;border-radius:50%;background:#FF5A4E"></span>LIVE</span>
+      <span style="position:absolute;left:16px;bottom:14px"><span style="display:block;font-size:17px">Drone camera</span><span style="display:block;font-size:13px">Click to make it big</span></span>
+    </button>
+
+    <article class="tile t-drone" style="animation-delay:.36s">
+      <div class="blobs" style="background:radial-gradient(circle at 80% 85%,#CFE3B8 0,rgba(207,227,184,0) 50%),radial-gradient(circle at 10% 20%,#F6F6F3 0,rgba(246,246,243,0) 50%)"></div>
+      <div class="k"><span>Drone</span><span style="color:#2C5E35" id="droneMode">—</span></div>
+      <div style="flex:1;perspective:600px;min-height:110px;position:relative" aria-hidden="true">
+        <div style="position:absolute;left:50%;top:55%;width:0;height:0;transform-style:preserve-3d;transform:rotateX(-30deg)">
+          <div class="bob"><div class="spin" style="animation-duration:16s" id="drone"></div></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
+        <span style="font-size:32px;font-weight:300;line-height:1;white-space:nowrap" id="alt">—</span><span style="font-size:13px;color:#3E433F;text-align:right" id="heading"></span>
+      </div>
+    </article>
+  </div>
+</section>
+</div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+// ------------------------------------------------------------------ helpers
+const $ = id => document.getElementById(id);
+const el = (tag, css, text) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; };
+const post = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+const money = n => n == null ? '—' : n >= 1e6 ? '$' + (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M' : n >= 1e3 ? '$' + Math.round(n / 1e3) + 'K' : '$' + Math.round(n);
+const ago = t => { const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 60 ? 'just now' : Math.round(s / 60) + ' min ago'; };
+function tween(node, to, fmt) {
+  const from = parseFloat(node.dataset.v || '0'); if (from === to) { node.textContent = fmt(to); return; }
+  node.dataset.v = to; const t0 = performance.now(), d = 700;
+  const step = now => { const k = Math.min(1, (now - t0) / d), e = 1 - Math.pow(1 - k, 3); node.textContent = fmt(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function setText(node, text) { if (node.textContent !== text) { node.textContent = text; return true; } return false; }
+
+// ------------------------------------------------------------------ vocab
+const CAT = {
+  'No Damage': {lvl: 'none', word: 'No damage', color: 'var(--none)'},
+  'Affected (1-9%)': {lvl: 'light', word: 'Light damage', color: 'var(--light)'},
+  'Minor (10-25%)': {lvl: 'light', word: 'Some damage', color: 'var(--light)'},
+  'Major (26-50%)': {lvl: 'heavy', word: 'Heavy damage', color: 'var(--heavy)'},
+  'Destroyed (>50%)': {lvl: 'destroyed', word: 'Destroyed', color: 'var(--destroyed)'},
+  'Unknown': {lvl: 'none', word: "Can't tell", color: 'var(--unknown)'}
+};
+const COMP_LVL = {none: 'none', minor: 'light', moderate: 'heavy', severe: 'heavy', destroyed: 'destroyed'};
+const WORDS = {
+  roof:   {none: 'Intact', minor: 'Scorched', moderate: 'Damaged', severe: 'Partly caved in', destroyed: 'Gone', not_visible: 'Not clearly visible'},
+  walls:  {none: 'Intact', minor: 'Smoke stains', moderate: 'Burned in spots', severe: 'Badly burned', destroyed: 'Burned down', not_visible: 'Not clearly visible'},
+  garage: {none: 'Fine', minor: 'Smoke damage', moderate: 'Damaged', severe: 'Badly burned', destroyed: 'Gone', not_visible: 'Not clearly visible'}
+};
+const sureWord = c => c >= .8 ? 'very sure' : c >= .6 ? 'fairly sure' : c >= .4 ? 'somewhat sure' : 'not sure';
+
+// ------------------------------------------------------------------ 3D house
+const SOOT = {none: .04, light: .2, heavy: .38, destroyed: .52};
+const INK = 'rgba(30,34,31,.55)';
+const f = (w, h, t, extra) => `width:${w}px;height:${h}px;margin:${-h / 2}px 0 0 ${-w / 2}px;transform:${t};${extra || ''}`;
+let modelKey = '';
+let lastParts = null;
+window.addEventListener('house3d-ready', () => {
+  $('vHouse').classList.add('webgl');
+  if (lastParts) window.house3d.update(lastParts);
+  window.house3d.setVisible(view === 'house');
+});
+function renderHouse(parts) {
+  const key = JSON.stringify(parts); if (key === modelKey) return; modelKey = key; lastParts = parts;
+  $('hero').classList.toggle('is-pending', parts.pending);
+  if (window.house3d) { window.house3d.update(parts); return; }   // real 3D model
+  // ---- CSS fallback (no WebGL / offline) ----
+  const {overall, roof, walls, windows, car, smoke, fire, pending} = parts;
+  const sw = SOOT[walls], burntW = walls === 'heavy' || walls === 'destroyed';
+  const wallBg = `background:linear-gradient(to top,rgba(46,38,32,${sw}),rgba(255,255,255,${walls === 'none' ? .55 : .12}) 72%);transform-origin:50% 100%;`;
+  const solid = `border:1.2px solid ${INK};`, broken = `border:1.2px ${burntW ? 'dashed' : 'solid'} ${INK};`;
+  const roofBroken = roof === 'heavy' || roof === 'destroyed';
+  const roofBg = {none: 'background:rgba(150,130,112,.30);', light: 'background:linear-gradient(135deg,rgba(40,34,30,.5),rgba(150,130,112,.2) 65%);',
+                  heavy: 'background:linear-gradient(160deg,rgba(30,26,22,.6),rgba(60,52,46,.3));', destroyed: 'background:rgba(30,26,22,.55);'}[roof];
+  const rb = `border:1.2px ${roofBroken ? 'dashed' : 'solid'} ${INK};`;
+  const glassBroken = windows === 'heavy' || windows === 'destroyed';
+  const glass = {none: 'rgba(170,200,215,.55)', light: 'rgba(120,140,150,.40)', heavy: 'transparent', destroyed: 'transparent'}[windows];
+  const win = (l, t, w, h) => `position:absolute;left:${l}px;top:${t}px;width:${w}px;height:${h}px;box-sizing:border-box;border:1.2px ${glassBroken ? 'dashed' : 'solid'} rgba(30,34,31,.45);background:${glass};transition:background .9s;`;
+  const so = SOOT[overall];
+  $('model').classList.toggle('pending', pending);
+  $('hero').classList.toggle('is-pending', pending);
+  $('floor').style.cssText = f(460, 460, 'translateY(60px) rotateX(90deg)', `background-image:radial-gradient(circle,rgba(30,34,31,.32) 1.1px,transparent 1.6px),radial-gradient(circle at 46% 52%,rgba(52,44,38,${(so * .85).toFixed(2)}),rgba(52,44,38,0) 46%);background-size:16px 16px,100% 100%;-webkit-mask-image:radial-gradient(circle,#000 38%,transparent 70%);mask-image:radial-gradient(circle,#000 38%,transparent 70%);`);
+  $('wFront').style.cssText = f(240, 120, 'translateZ(85px)', solid + wallBg);
+  $('wBack').style.cssText = f(240, 120, `rotateY(180deg) translateZ(85px) scaleY(${({none: 1, light: 1, heavy: .85, destroyed: .5})[walls]})`, broken + wallBg);
+  $('wLeft').style.cssText = f(170, 120, `rotateY(-90deg) translateZ(120px) scaleY(${({none: 1, light: 1, heavy: 1, destroyed: .8})[walls]})`, solid + wallBg);
+  $('wRight').style.cssText = f(170, 120, `rotateY(90deg) translateZ(120px) scaleY(${({none: 1, light: 1, heavy: .9, destroyed: .4})[walls]})`, broken + wallBg);
+  $('win1').style.cssText = win(26, 40, 44, 40); $('door').style.cssText = win(104, 46, 34, 74); $('win2').style.cssText = win(170, 40, 44, 40);
+  $('roofF').style.cssText = f(240, 113, {none: 'translate3d(0,-97.5px,42.5px) rotateX(41.4deg)', light: 'translate3d(0,-97.5px,42.5px) rotateX(41.4deg)',
+    heavy: 'translate3d(0,-78px,50px) rotateX(64deg)', destroyed: 'translate3d(0,28px,22px) rotateX(86deg)'}[roof], rb + roofBg + `opacity:${roof === 'destroyed' ? .55 : 1};`);
+  $('roofB').style.cssText = f(240, 113, roof === 'destroyed' ? 'translate3d(0,32px,-26px) rotateX(-84deg)' : 'translate3d(0,-97.5px,-42.5px) rotateX(-41.4deg)', rb + roofBg + `opacity:${roof === 'destroyed' ? .5 : 1};`);
+  const gab = `background:rgba(46,38,32,${(.1 + SOOT[roof] * .4).toFixed(2)});clip-path:polygon(50% 0,100% 100%,0 100%);`;
+  $('gabL').style.cssText = f(170, 75, 'translateY(-97.5px) rotateY(-90deg) translateZ(120px)', gab + `opacity:${roof === 'destroyed' ? 0 : 1};`);
+  $('gabR').style.cssText = f(170, 75, 'translateY(-97.5px) rotateY(90deg) translateZ(120px)', gab + `opacity:${roofBroken ? 0 : 1};`);
+  const chBg = `background:rgba(70,62,55,${(.32 + so * .45).toFixed(2)});border:1px solid ${INK};`;
+  [0, 90, 180, 270].forEach((r, i) => $('ch' + i).style.cssText = f(26, 190, `translate3d(72px,-35px,-40px) rotateY(${r}deg) translateZ(13px)`, chBg));
+  $('car').style.cssText = f(64, 30, 'translate3d(-185px,45px,40px)', `border:1px solid rgba(30,34,31,.5);background:${({none: 'rgba(110,140,170,.45)', light: 'rgba(95,115,135,.40)', heavy: 'rgba(46,38,32,.40)', destroyed: 'rgba(30,26,22,.55)'})[car]};`);
+  $('smoke').style.opacity = smoke ? 1 : 0;
+  $('embers').style.opacity = fire ? 1 : 0;
+}
+
+// sphere + drone geometry (static, built once)
+(function buildDecor() {
+  const s = $('sphere');
+  const ring = (size, t, a) => s.appendChild(el('div', `position:absolute;left:50%;top:50%;width:${size}px;height:${size}px;margin:${-size / 2}px 0 0 ${-size / 2}px;border-radius:50%;border:1px solid rgba(255,255,255,${a});transform:${t}`));
+  [0, 30, 60, 90, 120, 150].forEach((d, i) => ring(190, `rotateY(${d}deg)`, i % 3 === 0 ? .75 : .55));
+  ring(190, 'rotateX(90deg)', .85); ring(150, 'rotateX(90deg) translateZ(55px)', .45); ring(150, 'rotateX(90deg) translateZ(-55px)', .45);
+  const ld = el('div', 'position:absolute;left:50%;top:50%;margin:-6px 0 0 -6px;transform:translateZ(95px)'); ld.className = 'lime'; s.appendChild(ld);
+
+  const d = $('drone');
+  const part = css => d.appendChild(el('div', 'position:absolute;left:50%;top:50%;box-sizing:border-box;' + css));
+  part('width:130px;height:2px;margin:-1px 0 0 -65px;background:#1E221F;transform:rotateX(90deg) rotateZ(45deg)');
+  part('width:130px;height:2px;margin:-1px 0 0 -65px;background:#1E221F;transform:rotateX(90deg) rotateZ(-45deg)');
+  part('width:38px;height:38px;margin:-19px 0 0 -19px;border-radius:8px;border:1.2px solid #1E221F;background:rgba(255,255,255,.85);transform:rotateX(90deg)');
+  part('width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:7px;border:1.2px solid #1E221F;background:rgba(255,255,255,.7);transform:translateY(-9px) rotateX(90deg)');
+  part('width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:#1E221F;transform:translateY(10px)');
+  [[46, 46], [-46, 46], [46, -46], [-46, -46]].forEach(([x, z]) => {
+    const r = el('div', `position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;border:1px solid rgba(30,34,31,.6);transform:translate3d(${x}px,-4px,${z}px) rotateX(90deg)`);
+    const blade = el('div', 'position:absolute;left:3px;top:21px;width:38px;height:2px;background:rgba(30,34,31,.7)'); blade.className = 'rotor';
+    r.appendChild(blade); d.appendChild(r);
+  });
+})();
+
+// ------------------------------------------------------------------ views
+let view = 'house', map = null, mapLayers = {}, droneMk = null, rayLine = null;
+document.querySelectorAll('.views .iconbtn').forEach(b => b.onclick = () => setView(b.dataset.view));
+$('camTile').onclick = () => setView('camera');
+function setView(v) {
+  view = v;
+  document.querySelectorAll('.views .iconbtn').forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  $('vHouse').classList.toggle('hidden', v !== 'house');
+  $('vCamera').classList.toggle('hidden', v !== 'camera');
+  $('vMap').classList.toggle('hidden', v !== 'map');
+  const big = $('camBig');
+  if (v === 'camera' && !big.src) big.src = big.dataset.src;      // only open the 2nd stream when needed
+  if (v !== 'camera' && big.src) big.removeAttribute('src');
+  if (v === 'map') initMap();
+  if (window.house3d) window.house3d.setVisible(v === 'house');
+}
+
+let parcels = [], parcelIndex = {};
+async function loadParcels() {
+  const r = await (await fetch('/api/parcels')).json();
+  parcels = r.parcels; parcels.forEach((p, i) => parcelIndex[p.parcel_id] = i);
+  const segs = $('segs'); segs.textContent = '';
+  parcels.forEach(p => {
+    const b = el('button'); b.className = 'seg'; b.title = p.address; b.setAttribute('aria-label', 'Fly to ' + p.address);
+    b.onclick = () => post('/api/sim/goto/' + p.parcel_id); segs.appendChild(b);
+  });
+  const parts = (parcels[0] && parcels[0].address.split(',')) || [];
+  $('area').textContent = parts.length > 1 ? parts[0].replace(/^\d+\s+/, '') : '';
+}
+function initMap() {
+  if (map) { setTimeout(() => map.invalidateSize(), 50); return; }
+  if (typeof L === 'undefined') { $('map').textContent = 'The map needs internet (OpenStreetMap).'; return; }
+  const c = parcels.length ? [parcels[0].lat, parcels[0].lon] : [34.19, -118.13];
+  map = L.map('map', {zoomControl: true}).setView(c, 18);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 20, attribution: '© OpenStreetMap'}).addTo(map);
+  parcels.forEach(p => {
+    const m = L.circleMarker([p.lat, p.lon], {radius: 10, color: '#fff', weight: 2, fillColor: '#9A9A94', fillOpacity: .95}).addTo(map);
+    m.bindTooltip(p.address); m.on('click', () => post('/api/sim/goto/' + p.parcel_id)); mapLayers[p.parcel_id] = m;
+  });
+  droneMk = L.circleMarker(c, {radius: 7, color: '#1E221F', weight: 2, fillColor: '#D4F53C', fillOpacity: 1}).addTo(map);
+  rayLine = L.polyline([], {color: '#1E221F', weight: 1.5, dashArray: '4 6'}).addTo(map);
+  setTimeout(() => map.invalidateSize(), 60);
+}
+const LVL_HEX = {none: '#2E6B4A', light: '#C9A227', heavy: '#B5503F', destroyed: '#9B2D27'};
+
+// ------------------------------------------------------------------ controls
+$('prevBtn').onclick = () => post('/api/sim/step/-1');
+$('nextBtn').onclick = () => post('/api/sim/step/1');
+$('recheckBtn').onclick = () => { post('/api/assess_now'); toast('Re-checking this home', 'A fresh AI look takes a few seconds.'); };
+let tourOn = false;
+$('tourBtn').onclick = () => post('/api/sim/tour', {on: !tourOn, dwell_s: 8});
+$('bell').onclick = () => $('helpTile').scrollIntoView({behavior: 'smooth', block: 'center'});
+
+// ------------------------------------------------------------------ toasts
+function toast(title, sub) {
+  const t = el('div'); t.className = 'toast';
+  const dot = el('span'); dot.className = 'lime'; dot.style.marginTop = '4px'; t.appendChild(dot);
+  const box = el('div'); box.appendChild(el('div', '', title)); box.firstChild.className = 'b';
+  if (sub) { const s = el('div', '', sub); s.className = 's'; box.appendChild(s); }
+  t.appendChild(box); $('toasts').appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 5000);
+}
+
+// ------------------------------------------------------------------ render
+const seenAlerts = new Set(); let firstPoll = true, lastPid = null;
+function render(s) {
+  const live = s.live || {}, pose = live.pose || {}, cur = s.current;
+  tourOn = !!pose.tour_on; $('tourBtn').classList.toggle('on', tourOn); $('tourBtn').textContent = tourOn ? 'Auto-fly: on' : 'Auto-fly';
+
+  // status line
+  const st = $('status'); st.textContent = '';
+  const add = (k, v) => { const sp = el('span'); sp.append(k + ' '); sp.appendChild(el('b', '', v)); st.appendChild(sp); };
+  add('AI', (live.assessing ? 'looking…' : (cur && cur.assessment && cur.assessment._engine || '—').split(':').pop()));
+  add('GPS', pose.live ? 'live' : 'simulated');
+  add('Video', (live.fps || 0) + ' fps');
+  if (live.assess_error) { const w = el('span', '', 'AI offline, using backup'); w.className = 'warnchip'; w.title = live.assess_error; st.appendChild(w); }
+
+  // title + pill
+  const pid = cur ? cur.parcel.parcel_id : null;
+  if (cur) {
+    const p = cur.parcel, parts = p.address.split(',');
+    const street = parts[0], rest = parts.slice(1).join(',').trim();
+    const words = street.split(' ');
+    setText($('addr'), words.length > 2 ? words.slice(0, 2).join(' ') + '\n' + words.slice(2).join(' ') : street);
+    setText($('sub'), `Home in view · ${rest} · ${p.stories}-story, ${Number(p.sqft).toLocaleString()} sq ft, built ${p.year_built}`);
+  } else {
+    setText($('addr'), 'No home on\nfile here');
+    setText($('sub'), live.target_address ? 'Nearest address: ' + live.target_address : 'Point the drone at a house');
+  }
+  const a = cur && cur.assessment, e = cur && cur.estimate;
+  const cat = a ? (CAT[a.damage_category] || CAT.Unknown) : null;
+  const pill = $('pill');
+  if (cat) { setText(pill, cat.word); pill.style.background = cat.color; pill.classList.remove('dots'); }
+  else { setText(pill, cur ? 'Checking' : 'Unknown'); pill.style.background = 'var(--unknown)'; pill.classList.toggle('dots', !!cur); }
+
+  // people at this home (needed by the 3D model too)
+  const here = (s.alerts || []).filter(x => x.kind === 'life' && !x.acknowledged && x.parcel_id === pid);
+
+  // 3D house from the AI's per-part ratings
+  const overall = cat ? cat.lvl : 'none', comps = (a && a.components) || {};
+  const part = k => COMP_LVL[comps[k]] || overall;
+  renderHouse({
+    overall, roof: part('roof'), walls: part('exterior_walls'), windows: part('windows_doors'),
+    car: COMP_LVL[comps.vehicles] || overall,
+    garage: COMP_LVL[comps.garage_outbuildings] || overall,
+    person: here.length > 0,
+    smoke: !!(a && (a.smoke_present || a.active_fire || overall === 'heavy' || overall === 'destroyed')),
+    fire: !!(a && a.active_fire), pending: !!cur && !a
+  });
+  const lbl = (id, key, comp) => {
+    const v = a ? (WORDS[key][comps[comp]] || (cat ? cat.word : '—')) : '—';
+    const node = $(id).querySelector('.v');
+    if (setText(node, v)) { $(id).classList.remove('flash'); void $(id).offsetWidth; $(id).classList.add('flash'); }
+  };
+  lbl('lRoof', 'roof', 'roof'); lbl('lWalls', 'walls', 'exterior_walls');
+  const gv = comps.garage_outbuildings && comps.garage_outbuildings !== 'not_visible' ? 'garage_outbuildings' : 'vehicles';
+  lbl('lGarage', 'garage', gv);
+
+  if (a && a.damage_category === 'Unknown') {
+    $('pct').dataset.v = 0; setText($('pct'), '—');
+    setText($('pctCap'), "can't see a house clearly");
+    setText($('sure'), 'Point the camera at the home, or press Re-check');
+  } else if (a) {
+    tween($('pct'), Math.round(a.damage_percent || 0), v => Math.round(v) + '%');
+    setText($('pctCap'), overall === 'none' ? 'no damage found' : 'of the home is gone');
+    setText($('sure'), `AI is ${sureWord(a.confidence || 0)} (${Math.round((a.confidence || 0) * 100)}%)`);
+  } else { $('pct').dataset.v = 0; setText($('pct'), '—'); setText($('pctCap'), cur ? 'waiting for the first AI look' : ''); setText($('sure'), ''); }
+
+  // people at this home (label)
+  $('personLbl').style.opacity = here.length ? 1 : 0; $('personDot').style.opacity = here.length ? 1 : 0;
+  if (here.length) { setText($('pN'), String(here.length)); setText($('pWhat'), here.length > 1 ? 'signs of life' : 'sign of life'); setText($('pHow'), here[0].label + ' · ' + here[0].source); }
+
+  // street progress
+  const status = s.parcel_status || {}, vals = Object.values(status);
+  const checked = vals.filter(Boolean).length;
+  tween($('checked'), checked, v => String(Math.round(v)));
+  setText($('checkedOf'), `of ${vals.length} homes checked`);
+  const count = l => vals.filter(c => c && (CAT[c] || CAT.Unknown).lvl === l && c !== 'Unknown').length;
+  setText($('cD'), String(count('destroyed'))); setText($('cH'), String(count('heavy'))); setText($('cL'), String(count('light'))); setText($('cN'), String(count('none')));
+  setText($('doneTxt'), `${checked} of ${vals.length} homes done`);
+  document.querySelectorAll('#segs .seg').forEach((b, i) => {
+    const p = parcels[i]; if (!p) return; const c = status[p.parcel_id];
+    b.style.background = c ? LVL_HEX[(CAT[c] || CAT.Unknown).lvl] : '#DADAD4';
+    b.classList.toggle('cur', p.parcel_id === pid);
+  });
+
+  // help needed
+  const open = (s.alerts || []).filter(x => x.kind === 'life' && !x.acknowledged);
+  tween($('helpN'), open.length, v => String(Math.round(v)));
+  $('helpTile').classList.toggle('calm', !open.length);
+  setText($('helpUnit'), open.length ? (open.length === 1 ? 'person or animal may need help' : 'people or animals may need help') : 'no one needs help right now');
+  $('helpPulse').style.visibility = open.length ? 'visible' : 'hidden';
+  $('sendBtn').style.display = open.length ? '' : 'none';
+  const bc = $('bellCount'); bc.hidden = !open.length; bc.textContent = open.length;
+  const ids = open.slice(0, 3).map(x => x.id + ':' + x.count).join(',');
+  if ($('alist').dataset.k !== ids) {
+    $('alist').dataset.k = ids; $('alist').textContent = '';
+    open.slice(0, 3).forEach(x => {
+      const row = el('div'); row.className = 'arow';
+      const w = el('div'); w.className = 'w';
+      w.appendChild(el('div', '', x.label.charAt(0).toUpperCase() + x.label.slice(1)));
+      w.appendChild(el('div', '', `${(x.address || 'unknown spot').split(',')[0]} · ${x.source} · ${ago(x.last_seen)}${x.occupants_on_file != null ? ` · ${x.occupants_on_file} live here` : ''}`));
+      const b = el('button', '', 'Handled'); b.className = 'ack'; b.onclick = () => post(`/api/alerts/${x.id}/ack`);
+      row.append(w, b); $('alist').appendChild(row);
+    });
+  }
+  open.forEach(x => {
+    if (!seenAlerts.has(x.id)) { seenAlerts.add(x.id); if (!firstPoll) toast('Possible sign of life', `${x.label} · ${(x.address || '').split(',')[0]} (${x.source})`); }
+  });
+  $('sendBtn').onclick = () => {
+    const top = open[0]; if (!top) return;
+    post(`/api/alerts/${top.id}/ack`); toast('Rescue team sent', `Heading to ${(top.address || 'the marked spot').split(',')[0]}`);
+  };
+
+  // payout
+  if (e && e.status === 'ok') {
+    tween($('pay'), e.net_estimate, money);
+    setText($('payLo'), money(e.range_low) + ' low'); setText($('payHi'), money(e.range_high) + ' high');
+    setText($('payTag'), e.total_loss ? 'Total loss' : (e.net_estimate === 0 ? 'No claim' : ''));
+  } else { $('pay').dataset.v = 0; setText($('pay'), '—'); setText($('payLo'), a ? 'Not enough to estimate' : 'Waiting for the AI'); setText($('payHi'), ''); setText($('payTag'), ''); }
+
+  // safety
+  const hz = (a && a.hazards) || [];
+  let si = 0;
+  if (a && a.active_fire) si = 3;
+  else if (hz.length >= 3 || (overall === 'destroyed' && hz.some(h => /collap|fall|unstable/i.test(h)))) si = 2;
+  else if (hz.length) si = 1;
+  setText($('safeWord'), a ? ['Safe', 'Caution', 'Danger', 'Keep out'][si] : '—');
+  $('safeDot').setAttribute('cx', [16, 62, 112, 172][si]);
+  setText($('hazards'), a ? (hz.length ? hz.slice(0, 2).join(' · ') : 'No hazards seen') : '');
+
+  // drone
+  setText($('droneMode'), pose.live ? 'Live GPS' : 'Simulated');
+  setText($('alt'), Math.round(pose.alt_m || 0) + ' m');
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  setText($('heading'), `high · facing ${dirs[Math.round(((pose.heading_deg || 0) % 360) / 45) % 8]}`);
+
+  // map
+  if (map) {
+    for (const [p, c] of Object.entries(status)) { const m = mapLayers[p]; if (m) m.setStyle({fillColor: c ? LVL_HEX[(CAT[c] || CAT.Unknown).lvl] : '#9A9A94', color: p === pid ? '#1E221F' : '#fff', weight: p === pid ? 4 : 2}); }
+    if (pose.lat) { droneMk.setLatLng([pose.lat, pose.lon]); rayLine.setLatLngs([[pose.lat, pose.lon], [live.look_point.lat, live.look_point.lon]]); }
+  }
+  if (pid !== lastPid && lastPid !== null && cur) toast('Now looking at', cur.parcel.address);
+  lastPid = pid; firstPoll = false;
+}
+
+async function tick() {
+  try { const s = await (await fetch('/api/state')).json(); if (s.live && s.live.pose) render(s); }
+  catch (err) { console.warn(err); }
+  setTimeout(tick, 700);
+}
+loadParcels().then(tick).catch(tick);
+</script>
+<script type="importmap">{"imports":{"three":"/static/vendor/three/three.module.min.js","three/addons/":"/static/vendor/three/"}}</script>
+<script type="module" src="/static/house3d.js"></script>
+</body>
+</html>
