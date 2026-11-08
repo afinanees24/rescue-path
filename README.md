@@ -20,11 +20,11 @@ The two work together: the drone survey shows responders which homes may still h
 
 | Cue | Wrists | Feel | When |
 | --- | --- | --- | --- |
-| **Forward** | Both, together | Light flutter (50 ms on / 50 ms off) | Heading is within ±15° of the person |
-| **Stop** | Both, together | Hard pulses (255 for 300 ms, off 200 ms) | Obstacle under 60 cm, or within 1 m of the person. Overrides everything |
+| **Forward** | Both, together | Slow strong pulses (250 ms on / 250 ms off, intensity 220) | Heading is within ±15° of the person |
+| **Stop** | Both, together | Solid 255, continuous | Obstacle under 60 cm, or within 1 m of the person. Overrides everything |
 | **Turn** | One wrist only | Continuous buzz, 70 → 255 as the heading error shrinks from 90° to 15° | Off heading; buzz on the side to turn toward, louder as you get it right |
 
-No target fix: wrists silent, screen shows "Searching"; the wearer turns in place until a Turn cue appears. First-time wearer briefing: *"Both wrists fluttering: walk. Both wrists hard: stop. One wrist: turn that way, it gets stronger as you get it right."*
+No target fix: wrists silent, screen shows "Searching"; the wearer turns in place until a Turn cue appears. First-time wearer briefing: *"Both wrists pulsing: walk. Both wrists hard and steady: stop. One wrist: turn that way, it gets stronger as you get it right."*
 
 ## Repo layout
 
@@ -59,7 +59,7 @@ Service UUID (all boards): `12345678-1234-5678-1234-56789abcdef0`
 
 | Byte | Meaning | Values |
 | --- | --- | --- |
-| 0 | Cue | `0` off · `1` forward flutter · `2` stop · `3` turn |
+| 0 | Cue | `0` off · `1` forward pulse · `2` stop · `3` turn |
 | 1 | Param | Intensity 70–255 for cue 3, ignored otherwise |
 
 Patterns loop on the bracelet until a new cue arrives, so the app writes only on change. Send `3, intensity` to the turn-side wrist and `0` to the other; `1` or `2` to both. A bracelet that hears nothing for 2 s stops itself.
@@ -77,7 +77,15 @@ Patterns loop on the bracelet until a new cue arrives, so the app writes only on
 
 ## Flashing
 
-Arduino IDE 2 with the `esp32` board package. Board: **WEMOS LOLIN32 Lite**. Tools → Upload Speed → **115200** (921600 fails on these clones). Set `NAME` to `Bracelet-L` or `Bracelet-R` before flashing each bracelet. Test from nRF Connect by writing `01`, `02`, `03 FF`, `00` to the bracelet characteristic.
+Board: **WEMOS LOLIN32 Lite** (`esp32:esp32:lolin32-lite`). Both bracelets run the **same binary** — the board picks its own name at boot: GPIO 32 open = `Bracelet-L`, GPIO 32 tied to GND = `Bracelet-R`.
+
+```bash
+arduino-cli compile --fqbn esp32:esp32:lolin32-lite firmware/bracelet_ble
+arduino-cli upload  --fqbn esp32:esp32:lolin32-lite -p /dev/cu.usbserial-10 \
+  --upload-property upload.speed=460800 firmware/bracelet_ble
+```
+
+Upload speed matters: the default 921600 fails on these CH340 cables, 460800 works. The board prints `advertising <name>` at 115200 on boot. Test the motor from nRF Connect by writing `01 00`, `02 00`, `03 FF`, `00 00` to the bracelet characteristic.
 
 ## Demo note
 

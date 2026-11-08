@@ -2,8 +2,8 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 
-#define NAME     "Bracelet-L"       // Bracelet-L for the left one
 #define MOTOR    26
+#define NAME_PIN 32                 // tie GPIO 32 to GND on the right bracelet; leave open on the left
 #define SVC_UUID "12345678-1234-5678-1234-56789abcdef0"
 #define CHR_UUID "12345678-1234-5678-1234-56789abcdef1"
 
@@ -25,7 +25,12 @@ class RxCB : public BLECharacteristicCallbacks {
 void setup() {
   Serial.begin(115200);
   ledcAttach(MOTOR, 5000, 8);
-  BLEDevice::init(NAME);
+
+  pinMode(NAME_PIN, INPUT_PULLUP);
+  delay(10);
+  const char* name = digitalRead(NAME_PIN) == LOW ? "Bracelet-R" : "Bracelet-L";
+
+  BLEDevice::init(name);
   BLEServer* srv = BLEDevice::createServer();
   BLEService* svc = srv->createService(SVC_UUID);
   BLECharacteristic* chr = svc->createCharacteristic(CHR_UUID,
@@ -34,7 +39,8 @@ void setup() {
   svc->start();
   srv->getAdvertising()->addServiceUUID(SVC_UUID);
   srv->getAdvertising()->start();
-  Serial.println("advertising");
+  Serial.print("advertising ");
+  Serial.println(name);
 }
 
 void loop() {
@@ -43,8 +49,8 @@ void loop() {
 
   uint8_t out = 0;
   switch (cue) {
-    case FORWARD: out = ((t / 50) % 2 == 0) ? 150 : 0;   break;   // 50 on / 50 off flutter
-    case STOP:    out = ((t % 500) < 300)   ? 255 : 0;   break;   // 300 hard / 200 off
+    case FORWARD: out = ((t / 250) % 2 == 0) ? 220 : 0;  break;   // 250 on / 250 off strong pulses
+    case STOP:    out = 255;                             break;   // continuous at full
     case TURN:    out = param < 70 ? 70 : param;         break;   // continuous, variable
     default:      out = 0;
   }
