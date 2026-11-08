@@ -43,6 +43,8 @@ final class UWBLink: NSObject {
     private(set) var lastUpdate: Date?
     private(set) var supportsDirection = false
     private(set) var cameraAssist = false
+    /// The peer's discovery token arrived and the NI session is running with it.
+    private(set) var tokenExchanged = false
     private(set) var convergence = ""
     private(set) var lastError: String?
     /// Flip the camera-assisted horizontal angle if left/right comes out reversed on device.
@@ -114,6 +116,7 @@ final class UWBLink: NSObject {
         ni?.invalidate()
         ni = nil
         peerToken = nil
+        tokenExchanged = false
         peerName = nil
         clearMeasurement()
         if status != .unsupported { status = .idle }
@@ -147,6 +150,7 @@ final class UWBLink: NSObject {
         }
         peerToken = token
         runSession()
+        tokenExchanged = true
     }
 
     private func runSession() {
@@ -180,6 +184,7 @@ final class UWBLink: NSObject {
             guard name == peerName || peerName == nil else { return }
             peerName = nil
             peerToken = nil
+            tokenExchanged = false
             clearMeasurement()
             if running {
                 status = .searching

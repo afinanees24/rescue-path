@@ -12,6 +12,14 @@ enum SourceKind: String, CaseIterable, Identifiable {
         case .sim: "SIM"
         }
     }
+    /// [SRC] cycles UWB → RADAR → SIM → UWB.
+    var next: SourceKind {
+        switch self {
+        case .uwb: .radar
+        case .radar: .sim
+        case .sim: .uwb
+        }
+    }
 }
 
 /// Smoothed target measurement. Bearing: degrees, 0 = ahead, + right, − left.
@@ -48,33 +56,32 @@ struct FixSmoother {
     }
 }
 
-/// A persistent scan-mode mark: where a reading put the target, in world meters.
+/// One raw measurement from a target source (before smoothing).
+struct TargetReading: Equatable {
+    let distance: Double
+    /// Relative to the phone: 0 ahead, + right, − left. nil = no direction.
+    let bearing: Double?
+    let time: Date
+}
+
+/// The tracked target in world coordinates, for drawing.
+struct TrackSnapshot: Equatable {
+    var position: CGPoint?
+    var distance: Double?
+    var status: TrackStatus = .none
+    var trail: [CGPoint] = []
+}
+
+/// Eased distance for the radar source (distance only, drawn on the centre line).
+struct RangeDisplay: Equatable {
+    var distance: Double = 0
+    var visibility: Double = 0
+    var present = false
+}
+
+/// A SCAN mark: where one reading put the target, in world meters.
 struct Blip: Identifiable {
     let id = UUID()
     let position: CGPoint
     let time: Date
-}
-
-/// Eased display state for the target, so the marker glides instead of jumping.
-struct TargetDisplay {
-    var distance: Double = 0
-    var bearing: Double = 0
-    /// 1 while there is a distance, fading to 0 when it's lost.
-    var visibility: Double = 0
-    /// 1 while there is a bearing; fades to 0 when direction is nil (dot → ring).
-    var bearingVisibility: Double = 0
-    var present = false
-}
-
-/// One past marker position (relative bearing, distance) for the fading trail.
-struct TrailPoint {
-    let bearing: Double
-    let distance: Double
-}
-
-/// Ground-truth person position from the simulator (for the optional overlay).
-struct SimPerson: Identifiable {
-    let id: Int
-    let position: CGPoint
-    let isStill: Bool
 }

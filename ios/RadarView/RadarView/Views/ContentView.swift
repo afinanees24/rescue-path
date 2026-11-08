@@ -12,7 +12,7 @@ struct ContentView: View {
             case nil:
                 RoleSelectView { role = $0 }
             case .firefighter:
-                FirefighterRoot { role = nil }
+                FirefighterRoot { role = $0 }
             case .beacon:
                 BeaconScreen { role = nil }
             }
@@ -25,11 +25,11 @@ struct ContentView: View {
 }
 
 struct FirefighterRoot: View {
-    let onExit: () -> Void
+    let onSwitchRole: (AppRole) -> Void
     @State private var store = RadarStore()
 
     var body: some View {
-        RadarScreen(store: store, onExit: onExit)
+        RadarScreen(store: store, onSwitchRole: onSwitchRole)
             .onAppear { store.start() }
             .onDisappear { store.stop() }
     }

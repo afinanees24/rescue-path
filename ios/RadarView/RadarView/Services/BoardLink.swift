@@ -18,9 +18,19 @@ enum BoardRole: String, CaseIterable, Identifiable {
     }
 }
 
-enum Side: CaseIterable {
+enum Side: CaseIterable, Hashable {
     case left, right
     var board: BoardRole { self == .left ? .left : .right }
+    var short: String { self == .left ? "L" : "R" }
+}
+
+/// One bracelet write attempt, for the [LOG] sheet.
+struct CommandLogEntry: Identifiable {
+    let id = UUID()
+    let time: Date
+    let side: Side
+    let cmd: BuzzCommand
+    let sent: Bool
 }
 
 /// Phone → bracelet command: exactly 2 bytes.
@@ -93,6 +103,10 @@ final class BoardLink: NSObject {
     private(set) var waistRate: Double = 0
     private(set) var writes = 0
     private(set) var droppedWrites = 0
+    /// Last command actually sent to each bracelet.
+    private(set) var lastSent: [Side: CommandLogEntry] = [:]
+    /// Recent write attempts, newest first.
+    private(set) var commandLog: [CommandLogEntry] = []
 
     @ObservationIgnored private(set) var waistUpdatedAt: Date?
     @ObservationIgnored private var central: CBCentralManager?
@@ -147,11 +161,20 @@ final class BoardLink: NSObject {
         guard let p = peripherals[role], p.state == .connected, let c = writeChars[role],
               p.canSendWriteWithoutResponse else {
             droppedWrites += 1
+            logCommand(CommandLogEntry(time: Date(), side: side, cmd: cmd, sent: false))
             return false
         }
         p.writeValue(cmd.data, for: c, type: .withoutResponse)
         writes += 1
+        let entry = CommandLogEntry(time: Date(), side: side, cmd: cmd, sent: true)
+        lastSent[side] = entry
+        logCommand(entry)
         return true
+    }
+
+    private func logCommand(_ e: CommandLogEntry) {
+        commandLog.insert(e, at: 0)
+        if commandLog.count > 120 { commandLog.removeLast(commandLog.count - 120) }
     }
 
     /// Recompute the waist update rate (call regularly).

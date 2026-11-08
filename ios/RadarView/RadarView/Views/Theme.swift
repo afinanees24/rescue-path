@@ -1,30 +1,21 @@
 import SwiftUI
 
 /// Monochrome tactical-handheld palette: black screen, thin off-white lines,
-/// cyan for live signals, red only for a still person.
+/// light-blue ping, teal-green target, red only for danger (STOP / close obstacle).
 enum Theme {
     static let ink = Color(red: 0xE6 / 255, green: 0xE6 / 255, blue: 0xE6 / 255)
     static let line = ink.opacity(0.7)
+    static let grid = ink.opacity(0.65)
     static let faint = ink.opacity(0.22)
+    static let dim = ink.opacity(0.45)
+    static let text = ink
+    /// Ping band (#7FC8FF).
+    static let ping = Color(red: 0x7F / 255, green: 0xC8 / 255, blue: 1)
+    /// Target marker, aligned state, ON TARGET (#4CFFB0).
+    static let teal = Color(red: 0x4C / 255, green: 1, blue: 0xB0 / 255)
+    /// Connection pips and live states.
     static let cyan = Color(red: 0x5F / 255, green: 0xE3 / 255, blue: 1)
     static let red = Color(red: 1, green: 0x3B / 255, blue: 0x30 / 255)
-
-    static let background = Color.black
-    static let panel = Color.black
-    static let panelRaised = Color.white.opacity(0.06)
-    static let roomFill = Color.white.opacity(0.035)
-    static let grid = Color.white.opacity(0.04)
-    static let wall = line
-    static let text = ink
-    static let dim = ink.opacity(0.45)
-
-    // Roles used by the floor-plan (MAP) view.
-    static let radar = cyan
-    static let moving = cyan
-    static let still = red
-    static let firefighter = ink
-    static let sim = ink
-    static let live = cyan
 
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
@@ -46,7 +37,7 @@ struct Hairline: View {
 }
 
 extension View {
-    /// Soft phosphor glow for cyan/red elements.
+    /// Soft phosphor glow.
     func glow(_ color: Color, radius: CGFloat = 4) -> some View {
         shadow(color: color.opacity(0.9), radius: radius)
             .shadow(color: color.opacity(0.45), radius: radius * 2)
@@ -63,10 +54,10 @@ struct Scanlines: View {
                 p.addRect(CGRect(x: 0, y: y, width: size.width, height: 1))
                 y += 3
             }
-            ctx.fill(p, with: .color(.black.opacity(0.3)))
+            ctx.fill(p, with: .color(.black.opacity(0.22)))
         }
         .overlay(
-            RadialGradient(colors: [.clear, .black.opacity(0.35)], center: .center,
+            RadialGradient(colors: [.clear, .black.opacity(0.3)], center: .center,
                            startRadius: 220, endRadius: 650)
         )
         .allowsHitTesting(false)

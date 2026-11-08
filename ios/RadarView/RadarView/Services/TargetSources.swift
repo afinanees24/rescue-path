@@ -19,6 +19,8 @@ protocol TargetSource: AnyObject {
     /// Running/connected. With no fix the rules SWEEP; when inactive they go idle.
     var isActive: Bool { get }
     var fix: TargetFix { get }
+    /// Latest raw reading (for the world-position tracker); nil if the source can't place one.
+    var latestReading: TargetReading? { get }
     func start()
     func stop()
     func tick(_ context: SourceContext)
@@ -39,6 +41,11 @@ final class UWBTargetSource: TargetSource {
 
     var isActive: Bool { link.isLinked }
     var fix: TargetFix { fresh ? smoother.fix : .none }
+
+    var latestReading: TargetReading? {
+        guard let t = link.lastUpdate, let d = link.distance else { return nil }
+        return TargetReading(distance: d, bearing: link.bearing, time: t)
+    }
 
     func start() {
         link.onSample = { [weak self] distance, bearing in
@@ -75,6 +82,8 @@ final class RadarTargetSource: TargetSource {
     init(boards: BoardLink) { self.boards = boards }
 
     var fix: TargetFix { isActive ? TargetFix(distance: smoother.fix.distance, bearing: nil) : .none }
+    /// The radar has no direction, so it can't be placed in the world; drawn on the centre line instead.
+    var latestReading: TargetReading? { nil }
 
     func start() { smoother.reset() }
     func stop() { smoother.reset(); isActive = false }
@@ -95,64 +104,95 @@ final class RadarTargetSource: TargetSource {
 
 // MARK: - Simulator
 
-/// The existing simulator, reporting distance + bearing to the nearest person like UWB
-/// would: direction only within ±45° of where the phone points, distance always.
+/// Reproduces the reference video: the target starts ~4.3 m ahead, slightly off centre,
+/// walks toward you at ~0.6 m/s with a small side-to-side wobble, pauses on target,
+/// then resets in front of wherever you face.
+struct SimWalker {
+    let origin: CGPoint
+    let bearing: Double
+    var distance = 4.3
+    var time = 0.0
+    var held = 0.0
+
+    nonisolated static let speed = 0.6
+    nonisolated static let stopDistance = 0.6
+    nonisolated static let holdTime = 1.5
+
+    init(origin: CGPoint, heading: Double) {
+        self.origin = origin
+        let side: Double = Bool.random() ? 1 : -1
+        bearing = heading + side * Double.random(in: 5...10)
+    }
+
+    /// World position with a ~15 cm sideways wobble.
+    var position: CGPoint {
+        let base = origin.moved(bearing: bearing, distance: distance)
+        return base.moved(bearing: bearing + 90, distance: 0.15 * sin(time * 2 * .pi / 1.6))
+    }
+
+    /// Advance; returns true when the walk is over and should restart.
+    mutating func step(dt: Double) -> Bool {
+        time += dt
+        if distance > Self.stopDistance {
+            distance = max(Self.stopDistance, distance - Self.speed * dt)
+            return false
+        }
+        held += dt
+        return held >= Self.holdTime
+    }
+}
+
+/// Simulated beacon reporting like UWB: distance always, direction only within ±45°.
 @MainActor
 final class SimTargetSource: TargetSource {
     let kind = SourceKind.sim
     let providesBearing = true
-    let plan: FloorPlan
-    private let simulator: RadarSimulator
+    private var walker: SimWalker?
     private var smoother = FixSmoother()
-    private var seeded = false
-    private var randomizeNext = false
     private var waitingSince: Date?
     private var accumulator = 0.0
+    private(set) var latestReading: TargetReading?
 
     nonisolated static let directionHalfAngle = 45.0
-    nonisolated static let maxRange = 15.0
 
-    init(plan: FloorPlan) {
-        self.plan = plan
-        simulator = RadarSimulator(plan: plan)
-    }
+    var isActive: Bool { walker != nil }
+    var fix: TargetFix { walker != nil ? smoother.fix : .none }
 
-    var isActive: Bool { seeded }
-    var fix: TargetFix { seeded ? smoother.fix : .none }
-    var truth: [SimPerson] { simulator.truth }
-
-    /// Place a new simulated beacon person next time the heading is known.
-    func reseed(randomize: Bool) {
-        seeded = false
-        randomizeNext = randomize
+    func start() {
+        walker = nil
         waitingSince = nil
+        latestReading = nil
         smoother.reset()
     }
 
-    func start() { reseed(randomize: false) }
-    func stop() { smoother.reset() }
+    func stop() {
+        walker = nil
+        smoother.reset()
+    }
 
     func tick(_ c: SourceContext) {
-        if !seeded {
+        if walker == nil {
             let since = waitingSince ?? c.now
             waitingSince = since
+            // Wait (briefly) for the compass so "ahead" means where the phone points.
             guard c.headingReady || c.now.timeIntervalSince(since) > 2 else { return }
-            let offset = randomizeNext ? Double.random(in: -60...60) : Double.random(in: -12...12)
-            simulator.seedBeacon(origin: c.firefighter, heading: c.heading + offset)
-            seeded = true
+            walker = SimWalker(origin: c.firefighter, heading: c.heading)
         }
-        simulator.step(dt: c.dt)
+        guard var w = walker else { return }
+        if w.step(dt: c.dt) {
+            w = SimWalker(origin: c.firefighter, heading: c.heading)
+        }
+        walker = w
+
         accumulator += c.dt
         guard accumulator >= 0.1 else { return }        // ~10 Hz, like NI
         accumulator = accumulator.truncatingRemainder(dividingBy: 0.1)
 
-        guard let hit = simulator.nearest(from: c.firefighter), hit.distance <= Self.maxRange else {
-            smoother.push(distance: nil, bearing: nil)
-            return
-        }
-        let rel = Compass.delta(hit.bearing, c.heading)
-        let distance = max(0.1, hit.distance + Double.random(in: -0.05...0.05))
-        let bearing = abs(rel) <= Self.directionHalfAngle ? rel + Double.random(in: -2...2) : nil
+        let pos = w.position
+        let rel = Compass.delta(Compass.bearing(from: c.firefighter, to: pos), c.heading)
+        let distance = max(0.1, c.firefighter.distance(to: pos) + Double.random(in: -0.04...0.04))
+        let bearing = abs(rel) <= Self.directionHalfAngle ? rel + Double.random(in: -1.5...1.5) : nil
         smoother.push(distance: distance, bearing: bearing)
+        latestReading = TargetReading(distance: distance, bearing: bearing, time: c.now)
     }
 }

@@ -76,9 +76,10 @@ ios/RadarView/RadarView/
   Services/UWBLink.swift         Nearby Interaction + Multipeer token exchange
   Services/TargetSources.swift   UWB (default), RADAR (rd when rp == 1), SIM
   Model/GuidanceEngine.swift     rule table, 100 ms tick, bracelet writes, rule log
-  Views/RadarScreen.swift        heading-up scope, cue label, connection pips
+  Model/WorldTracker.swift       world-coordinate target: EMA + outlier rejection, trail
+  Views/RadarScreen.swift        the firefighter's single radar screen
+  Views/LogSheet.swift           [LOG]: bracelet commands, UWB steps, TEST LEFT/RIGHT, role switch
   Views/BeaconScreen.swift       the hidden person's phone
-  Views/DebugPanel.swift         long-press the header: TEST LEFT/RIGHT, live us, rule log
 ```
 
 > **Bracelet protocol status:** the app currently sends the earlier 2-byte
@@ -102,7 +103,8 @@ xcodebuild -project ios/RadarView/RadarView.xcodeproj -scheme RadarView -destina
 ### Using it
 
 - **Roles:** at launch pick **FIREFIGHTER** (radar + bracelets; phone faces forward) or **BEACON** (the hidden person's phone; it only joins the UWB session and shows "BEACON ACTIVE" with the distance). Both phones need a U1/U2 chip.
-- **Main screen:** heading-up scope with the target at its bearing and distance; when UWB direction drops out the dot fades to a range ring. The waist ultrasonic shows as a short arc straight ahead (red under 60 cm). The footer shows the active cue, and the header has W / L / R / U connection pips.
-- **Controls:** `[SCAN]` leaves world-fixed dots that rotate as you turn, `[SRC …]` picks UWB / RADAR / SIM, `[MAP]` opens the floor plan, rule log and settings.
-- **Debug:** long-press the header for TEST LEFT / TEST RIGHT, the live `us` value, the current rule, the rule-change log and raw UWB readings (including a left/right flip for camera-assisted direction).
+- **One screen, Find My-style:** heading-up 90° / 5 m wedge with a light-blue ping. Target "01" is a teal crosshair at its exact position, held in world coordinates (compass heading + UWB bearing, smoothed, outliers rejected), so turning rotates it around you. A dotted trail shows its last ~1.5 s. When direction drops out it stays dimmed as "01 · LAST KNOWN"; outside the wedge a chevron on the edge points the way to turn. Facing it (within 15°) lights the centre line teal.
+- **Footer:** big distance counting in 0.1 m steps, the direction in words ("TO YOUR LEFT · 48°"), the cue actually sent to the bracelets, and `US · RX`. Under 1 m: "ON TARGET · 0.8 M". No fix: "MOVE AROUND · SWEEP SLOWLY".
+- **Controls:** `[SCAN]` leaves world-fixed dots (tap again to stop and clear), `[SRC …]` cycles UWB → RADAR → SIM, `[LOG]` opens bracelet commands, UWB state steps, TEST LEFT / TEST RIGHT and the role switch.
+- **SIM:** a target ~4.3 m ahead walks toward you at ~0.6 m/s with a slight wobble, then resets.
 - **UWB discovery:** Multipeer service type `ff-uwb` (Info.plist lists `_ff-uwb._tcp` and `_ff-uwb._udp`).
