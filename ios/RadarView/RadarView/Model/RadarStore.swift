@@ -8,7 +8,9 @@ import Observation
 @Observable
 final class RadarStore {
     nonisolated static let range = 6.0          // meters
-    nonisolated static let halfAngle = 60.0     // degrees (120° cone)
+    nonisolated static let halfAngle = 35.0     // degrees (70° wedge)
+    nonisolated static let trailLength = 7
+    nonisolated static let trailInterval = 0.2
     nonisolated static let blipLifetime: TimeInterval = 30
     nonisolated static let simInterval = 0.2    // 5 Hz, same as the firmware
 
@@ -33,8 +35,14 @@ final class RadarStore {
     private(set) var alerts: [AlertEntry] = []
     private(set) var updateRate: Double = 0
     private(set) var simTruth: [SimPerson] = []
+    /// Recent eased distances per target, oldest first (newest = current position).
+    private(set) var trails: [TargetKind: [Double]] = [:]
 
     @ObservationIgnored private let simulator: RadarSimulator
+    @ObservationIgnored private var simSeeded = false
+    @ObservationIgnored private var simSeedCount = 2
+    @ObservationIgnored private var simWaitingSince: Date?
+    @ObservationIgnored private var trailAccumulator = 0.0
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var lastTick = Date()
     @ObservationIgnored private var simAccumulator = 0.0
@@ -59,12 +67,25 @@ final class RadarStore {
         compassActive ? Compass.normalize(compass.heading + northOffset) : manualHeading
     }
 
+    /// Number of targets currently reported (0–2).
+    var targetCount: Int { (moving.present ? 1 : 0) + (still.present ? 1 : 0) }
+
+    /// The target the footer reads out: a still person always takes priority.
+    var priorityKind: TargetKind? {
+        if still.present { return .still }
+        if moving.present { return .moving }
+        return nil
+    }
+
+    func track(_ kind: TargetKind) -> TrackDisplay { kind == .still ? still : moving }
+
     // MARK: - Lifecycle
 
     func start() {
         guard timer == nil else { return }
         compass.start()
         displayHeading = targetHeading
+        if mode == .simulated { requestSimSeed(count: 2) }
         lastTick = Date()
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -79,7 +100,12 @@ final class RadarStore {
         guard newMode != mode else { return }
         mode = newMode
         clearReading()
-        if newMode == .live { ble.start() } else { ble.stop() }
+        if newMode == .live {
+            ble.start()
+        } else {
+            ble.stop()
+            requestSimSeed(count: 2)
+        }
     }
 
     func setUseCompass(_ on: Bool) {
@@ -110,9 +136,27 @@ final class RadarStore {
     func clearAlerts() { alerts.removeAll() }
 
     func newScenario() {
-        simulator.reset(plan: plan, count: Int.random(in: 1...3))
-        simTruth = simulator.truth
         clearReading()
+        requestSimSeed(count: Int.random(in: 1...3))
+    }
+
+    /// Place simulated people relative to where the firefighter faces. Waits briefly for
+    /// the first compass reading so "ahead" means where the phone actually points.
+    private func requestSimSeed(count: Int) {
+        simSeeded = false
+        simSeedCount = count
+        simWaitingSince = Date()
+    }
+
+    private func seedSimIfReady(now: Date) {
+        guard !simSeeded else { return }
+        let waited = now.timeIntervalSince(simWaitingSince ?? now)
+        let headingKnown = compass.hasReading || !compass.isAvailable || !useCompass
+        guard headingKnown || waited > 2 else { return }
+        simulator.seedAhead(origin: firefighter, heading: targetHeading, plan: plan, count: simSeedCount)
+        displayHeading = targetHeading
+        simTruth = simulator.truth
+        simSeeded = true
     }
 
     // MARK: - Frame handling
@@ -163,6 +207,7 @@ final class RadarStore {
         moving = TrackDisplay()
         still = TrackDisplay()
         detections.removeAll()
+        trails.removeAll()
         lastFrameAt = nil
         frameTimes.removeAll()
         updateRate = 0
@@ -179,10 +224,11 @@ final class RadarStore {
             displayHeading + Compass.delta(targetHeading, displayHeading) * min(1, dt * 8))
 
         if mode == .simulated {
+            seedSimIfReady(now: now)
             simulator.step(dt: dt)
             if showTruth { simTruth = simulator.truth }
             simAccumulator += dt
-            if simAccumulator >= Self.simInterval {
+            if simSeeded, simAccumulator >= Self.simInterval {
                 simAccumulator = simAccumulator.truncatingRemainder(dividingBy: Self.simInterval)
                 ingest(simulator.measure(from: firefighter, heading: displayHeading, plan: plan,
                                          halfAngle: Self.halfAngle, range: Self.range))
@@ -197,6 +243,12 @@ final class RadarStore {
         moving = eased(moving, dt: dt)
         still = eased(still, dt: dt)
 
+        trailAccumulator += dt
+        if trailAccumulator >= Self.trailInterval {
+            trailAccumulator = trailAccumulator.truncatingRemainder(dividingBy: Self.trailInterval)
+            sampleTrails()
+        }
+
         if let oldest = blips.first, now.timeIntervalSince(oldest.time) > Self.blipLifetime {
             blips.removeAll { now.timeIntervalSince($0.time) > Self.blipLifetime }
         }
@@ -204,6 +256,23 @@ final class RadarStore {
         frameTimes.removeAll { now.timeIntervalSince($0) > 2 }
         let rate = Double(frameTimes.count) / 2
         if abs(rate - updateRate) >= 0.25 || (rate == 0 && updateRate != 0) { updateRate = rate }
+    }
+
+    /// Remember where each marker has been so the radar can draw a fading trail.
+    private func sampleTrails() {
+        var next = trails
+        for kind in TargetKind.allCases {
+            let t = track(kind)
+            var trail = next[kind] ?? []
+            if t.present && t.visibility > 0.3 {
+                trail.append(t.distance)
+                if trail.count > Self.trailLength { trail.removeFirst(trail.count - Self.trailLength) }
+            } else if !trail.isEmpty {
+                trail.removeFirst()
+            }
+            next[kind] = trail.isEmpty ? nil : trail
+        }
+        trails = next
     }
 
     private func eased(_ track: TrackDisplay, dt: Double) -> TrackDisplay {

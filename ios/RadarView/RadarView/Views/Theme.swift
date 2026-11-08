@@ -1,27 +1,78 @@
 import SwiftUI
 
+/// Monochrome tactical-handheld palette: black screen, thin off-white lines,
+/// cyan for live signals, red only for a still person.
 enum Theme {
-    static let background = Color(red: 0.03, green: 0.04, blue: 0.05)
-    static let panel = Color(red: 0.08, green: 0.09, blue: 0.11)
-    static let panelRaised = Color(red: 0.13, green: 0.14, blue: 0.17)
-    static let roomFill = Color(red: 0.09, green: 0.10, blue: 0.12)
-    static let grid = Color.white.opacity(0.05)
-    static let wall = Color(white: 0.88)
-    static let text = Color.white
-    static let dim = Color(white: 0.62)
+    static let ink = Color(red: 0xE6 / 255, green: 0xE6 / 255, blue: 0xE6 / 255)
+    static let line = ink.opacity(0.7)
+    static let faint = ink.opacity(0.22)
+    static let cyan = Color(red: 0x5F / 255, green: 0xE3 / 255, blue: 1)
+    static let red = Color(red: 1, green: 0x3B / 255, blue: 0x30 / 255)
 
-    static let radar = Color(red: 0.20, green: 1.00, blue: 0.55)
-    static let moving = Color(red: 1.00, green: 0.55, blue: 0.00)
-    static let still = Color(red: 1.00, green: 0.17, blue: 0.22)
-    static let firefighter = Color(red: 0.25, green: 0.70, blue: 1.00)
-    static let sim = Color(red: 1.00, green: 0.78, blue: 0.10)
-    static let live = Color(red: 0.20, green: 1.00, blue: 0.55)
+    static let background = Color.black
+    static let panel = Color.black
+    static let panelRaised = Color.white.opacity(0.06)
+    static let roomFill = Color.white.opacity(0.035)
+    static let grid = Color.white.opacity(0.04)
+    static let wall = line
+    static let text = ink
+    static let dim = ink.opacity(0.45)
+
+    // Roles used by the floor-plan (MAP) view.
+    static let radar = cyan
+    static let moving = cyan
+    static let still = red
+    static let firefighter = ink
+    static let sim = ink
+    static let live = cyan
 
     static func color(for kind: TargetKind) -> Color {
-        kind == .still ? still : moving
+        kind == .still ? red : cyan
     }
 
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
+    }
+}
+
+/// Small, wide-tracked monospaced device text.
+func tacText(_ string: String, _ size: CGFloat = 12, _ weight: Font.Weight = .medium) -> Text {
+    Text(string)
+        .font(.system(size: size, weight: weight, design: .monospaced))
+        .tracking(size * 0.2)
+}
+
+/// 1 pt divider line.
+struct Hairline: View {
+    var body: some View {
+        Rectangle().fill(Theme.line).frame(height: 1)
+    }
+}
+
+extension View {
+    /// Soft phosphor glow for cyan/red elements.
+    func glow(_ color: Color, radius: CGFloat = 4) -> some View {
+        shadow(color: color.opacity(0.9), radius: radius)
+            .shadow(color: color.opacity(0.45), radius: radius * 2)
+    }
+}
+
+/// Very faint scanlines plus a light vignette, like a low-res device screen.
+struct Scanlines: View {
+    var body: some View {
+        Canvas { ctx, size in
+            var p = Path()
+            var y: CGFloat = 0
+            while y < size.height {
+                p.addRect(CGRect(x: 0, y: y, width: size.width, height: 1))
+                y += 3
+            }
+            ctx.fill(p, with: .color(.black.opacity(0.3)))
+        }
+        .overlay(
+            RadialGradient(colors: [.clear, .black.opacity(0.35)], center: .center,
+                           startRadius: 220, endRadius: 650)
+        )
+        .allowsHitTesting(false)
     }
 }
