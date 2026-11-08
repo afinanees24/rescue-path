@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Downloaded model weights (fetched automatically on first run)
+*.pt
+
+# Runtime output
+output/snapshots/*
+!output/snapshots/.gitkeep
+
+# Secrets: never commit API keys
+.env
+*.key
+output/reports/*
+!output/reports/.gitkeep

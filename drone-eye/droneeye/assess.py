@@ -1,7 +1,9 @@
 """Damage assessment of the house in view.
 
-Primary: a Claude vision model returns a structured, adjuster-style assessment (via forced tool use,
-so the output is always valid JSON). Runs on a background worker a few times per house, never blocking video.
+Primary: NVIDIA Nemotron 3.5 Super VL (build.nvidia.com, OpenAI-compatible API) returns a structured,
+adjuster-style assessment as JSON (response_format json_schema). Claude and Gemini are optional alternatives
+(--provider claude|gemini). With --provider auto, an NVIDIA_API_KEY wins over the others.
+Runs on a background worker, never blocking video.
 Fallback: a crude colour heuristic so the demo keeps working with no API key / no Wi-Fi.
 """
 from __future__ import annotations
