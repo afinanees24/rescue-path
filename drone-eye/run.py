@@ -35,9 +35,16 @@ def main():
     ap.add_argument("--no-llm", action="store_true", help="offline heuristic only (same as --provider none)")
     ap.add_argument("--yolo", default="yolo11n.pt", help="ultralytics weights for people/animal detection")
     ap.add_argument("--assess-interval", type=float, default=None, help="seconds between re-assessments of the same house")
-    ap.add_argument("--max-assess-per-house", type=int, default=None, help="auto assessments per visit (API cost/quota control)")
+    ap.add_argument("--max-assess-per-house", type=int, default=None, help="automatic AI looks per home visit (0 = keep looking every --assess-interval seconds). Default 8 for Nemotron")
     ap.add_argument("--alt", type=float, default=30.0, help="simulated altitude (m)")
     ap.add_argument("--pitch", type=float, default=-45.0, help="simulated gimbal pitch (deg, -90 = straight down)")
+    ap.add_argument("--disaster", default="wildfire", choices=["wildfire", "hurricane", "flood"],
+                    help="disaster type to survey (can also be switched from the dashboard)")
+    ap.add_argument("--keep-photos", type=int, default=30, help="automatic evidence photos kept per home (manual photos are always kept)")
+    ap.add_argument("--report-to", default="Claims adjuster", help='name on the "Prepared for" line of claim PDFs')
+    ap.add_argument("--report-photos", type=int, default=6, help="photos per home in claim PDFs")
+    ap.add_argument("--agent", action="store_true", help="start the Nemotron survey agent right away (or use the dashboard button)")
+    ap.add_argument("--agent-model", default=None, help="model for the survey agent (default: same as --model)")
     ap.add_argument("--list-cameras", action="store_true", help="list camera indexes you can pass to --source, then exit")
     ap.add_argument("--reverse-geocode", action="store_true", help="look up addresses via OpenStreetMap when no parcel matches")
     args = ap.parse_args()
@@ -49,13 +56,17 @@ def main():
     parcels = ParcelDB(args.parcels)
     tel = Telemetry(parcels, alt_m=args.alt, pitch=args.pitch)
     state = AppState(parcels, os.path.join(HERE, "output", "snapshots"))
+    state.set_hazard(args.disaster)
+    state.keep_auto = max(1, args.keep_photos)
+    state.report_to = args.report_to
+    state.report_photos = max(1, args.report_photos)
     source = open_source(args.source)
     detector = LifeDetector(args.yolo)
     provider = "none" if args.no_llm else pick_provider(args.provider)
     primary, fallback = make_assessor(provider, args.model)
     # Gemini's free tier allows only a small number of requests per day: assess each house once by default.
     if args.max_assess_per_house is None:
-        args.max_assess_per_house = 1 if provider == "gemini" else 3
+        args.max_assess_per_house = 1 if provider == "gemini" else (3 if provider == "claude" else 8)
     if args.assess_interval is None:
         args.assess_interval = 30.0 if provider == "gemini" else 10.0
 
@@ -66,13 +77,25 @@ def main():
         assess_interval_s=args.assess_interval, max_auto_per_visit=args.max_assess_per_house,
     )
     pipe.start()
-    print(f"\n  Drone-Eye running: camera={source.describe()} detector={detector.backend} "
-          f"assessor={(primary or fallback).name}")
+
+    from droneeye.agent import NemotronPlanner, RulePlanner, SurveyAgent
+    planner = RulePlanner()
+    if provider == "nemotron":
+        try:
+            from droneeye.assess import DEFAULT_MODELS
+            planner = NemotronPlanner(args.agent_model or args.model or DEFAULT_MODELS["nemotron"])
+        except Exception as e:
+            print(f"  [agent] Nemotron planner unavailable ({e}); using offline rules")
+    agent = SurveyAgent(pipe, planner, os.path.join(HERE, "output", "reports"))
+    if args.agent:
+        agent.start()
+    print(f"\n  Drone-Eye running: disaster={args.disaster} camera={source.describe()} detector={detector.backend} "
+          f"assessor={(primary or fallback).name} agent={planner.name}")
     print(f"  Dashboard:  http://localhost:{args.port}/")
     if args.source == "phone":
         print(f"  Phone page: https://<your-https-tunnel>/phone   (see README: phones need HTTPS for the camera)")
     print()
-    uvicorn.run(build_app(pipe), host=args.host, port=args.port, log_level="warning")
+    uvicorn.run(build_app(pipe, agent), host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":

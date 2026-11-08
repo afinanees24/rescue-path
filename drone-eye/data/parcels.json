@@ -1,5 +1,5 @@
 {
-  "_note": "DEMO DATA \u2014 fictional streets/policies placed near Altadena, CA for the hackathon demo. Replace with real parcel/policy data.",
+  "_note": "DEMO DATA \u2014 fictional streets/policies placed near Altadena, CA for the hackathon demo. Replace with real parcel/policy data. About 40% of homes carry a demo flood policy; the rest show flood losses as uninsured.",
   "center": {
     "lat": 34.1896,
     "lon": -118.1323
@@ -24,6 +24,12 @@
         "coverage_b_other_structures": 69200,
         "coverage_c_contents": 346000,
         "deductible": 5000
+      },
+      "flood_policy": {
+        "policy_number": "DEMO-FLD-2001",
+        "building": 250000,
+        "contents": 100000,
+        "deductible": 2000
       }
     },
     {
@@ -87,6 +93,12 @@
         "coverage_b_other_structures": 63800,
         "coverage_c_contents": 319000,
         "deductible": 5000
+      },
+      "flood_policy": {
+        "policy_number": "DEMO-FLD-2004",
+        "building": 250000,
+        "contents": 100000,
+        "deductible": 2000
       }
     },
     {
@@ -129,6 +141,12 @@
         "coverage_b_other_structures": 98800,
         "coverage_c_contents": 494000,
         "deductible": 2500
+      },
+      "flood_policy": {
+        "policy_number": "DEMO-FLD-2006",
+        "building": 250000,
+        "contents": 100000,
+        "deductible": 2000
       }
     },
     {
@@ -192,6 +210,12 @@
         "coverage_b_other_structures": 98700,
         "coverage_c_contents": 493500,
         "deductible": 5000
+      },
+      "flood_policy": {
+        "policy_number": "DEMO-FLD-2009",
+        "building": 250000,
+        "contents": 100000,
+        "deductible": 2000
       }
     },
     {
@@ -234,6 +258,12 @@
         "coverage_b_other_structures": 110200,
         "coverage_c_contents": 551000,
         "deductible": 2500
+      },
+      "flood_policy": {
+        "policy_number": "DEMO-FLD-2011",
+        "building": 250000,
+        "contents": 100000,
+        "deductible": 2000
       }
     },
     {
@@ -297,6 +327,12 @@
         "coverage_b_other_structures": 70600,
         "coverage_c_contents": 353000,
         "deductible": 5000
+      },
+      "flood_policy": {
+        "policy_number": "DEMO-FLD-2014",
+        "building": 250000,
+        "contents": 100000,
+        "deductible": 2000
       }
     },
     {
@@ -339,6 +375,12 @@
         "coverage_b_other_structures": 63800,
         "coverage_c_contents": 319000,
         "deductible": 2500
+      },
+      "flood_policy": {
+        "policy_number": "DEMO-FLD-2016",
+        "building": 250000,
+        "contents": 100000,
+        "deductible": 2000
       }
     },
     {

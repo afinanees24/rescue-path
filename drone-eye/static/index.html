@@ -30,6 +30,10 @@ button{font:inherit;color:inherit;cursor:pointer}
 .status b{font-weight:500;color:var(--ink)}
 .warnchip{background:#F6E2B8;color:#5A3E00;border-radius:999px;padding:2px 10px}
 .spacer{flex:1}
+.hazsel{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:var(--surface);border-radius:12px;padding:0 6px 0 14px;height:44px;font-size:14px;margin-left:10px}
+.hazsel select{font:inherit;font-size:15px;background:#2E332F;color:#fff;border:0;border-radius:9px;height:34px;padding:0 10px;cursor:pointer}
+.paywho{font-size:14px;margin-top:6px}
+.paywho.bad{color:#7A1F14;font-weight:600}
 .iconbtn{width:44px;height:44px;border-radius:12px;border:0;background:var(--chip);display:flex;align-items:center;justify-content:center;transition:background .2s,transform .15s;position:relative}
 .iconbtn:hover{background:#E0E0DA}
 .iconbtn:active{transform:scale(.95)}
@@ -123,6 +127,50 @@ h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;le
 .rotor{animation:spinZ .35s linear infinite}
 .bob{position:absolute;width:0;height:0;transform-style:preserve-3d;animation:bob 3.2s ease-in-out infinite}
 
+
+/* ---------- evidence tile ---------- */
+.t-evidence{grid-column:1/-1;background:#FFFFFF;color:var(--ink);box-shadow:0 1px 2px rgba(16,24,40,.05);padding:18px}
+.evwrap{display:flex;flex-wrap:wrap;gap:16px;margin-top:10px}
+.evimg{flex:999 1 340px;min-width:0;position:relative;border-radius:14px;overflow:hidden;background:#1E221F;align-self:flex-start}
+.evimg img{display:block;width:100%;height:auto;transition:opacity .5s}
+.evboxes{position:absolute;inset:0;pointer-events:none}
+.evbox{position:absolute;border:2.5px solid;border-radius:6px;box-shadow:0 0 0 1px rgba(0,0,0,.25);animation:boxin .55s cubic-bezier(.2,.7,.2,1) both;transition:box-shadow .2s,opacity .2s}
+.evbox.det{border-style:dashed;border-width:2px}
+.evbox.det span{top:auto;bottom:-24px}
+.evbox span{position:absolute;left:-2px;top:-24px;white-space:nowrap;font-size:12px;font-weight:600;color:#fff;padding:3px 8px;border-radius:6px}
+.evbox.hot{box-shadow:0 0 0 4px rgba(212,245,60,.85)}
+.evboxes.dim .evbox:not(.hot){opacity:.25}
+.evscan{position:absolute;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,#D4F53C,transparent);top:-4px;opacity:0}
+.evscan.go{animation:scan 1.1s ease-in-out}
+.evempty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#CFCFC8;font-size:15px;text-align:center;padding:20px}
+.evside{flex:1 1 220px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.evfind{display:flex;flex-direction:column;gap:6px}
+.evf{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:10px;background:#F4F4F0;cursor:default;transition:background .2s;animation:slidein .45s cubic-bezier(.2,.7,.2,1) both}
+.evf:hover{background:#ECEDE4}
+.evf .sw{width:12px;height:12px;border-radius:3px;margin-top:4px;flex:none}
+.evf b{font-weight:500}
+.evf small{display:block;color:var(--muted);font-size:13px}
+.evsum{font-size:14px;color:#3E433F;line-height:1.45}
+.evthumbs{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin-top:auto;padding:3px 2px 6px;scrollbar-width:thin}
+.evthumbs button{flex:0 0 auto;position:relative}
+.evthumbs button.man::after{content:'';position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;background:#D4F53C;box-shadow:0 0 0 1.5px #1E221F}
+.evshot{border:0;background:var(--ink);color:#fff;font:inherit;font-size:12px;padding:5px 11px;border-radius:999px;cursor:pointer;display:inline-flex;gap:6px;align-items:center;transition:transform .15s,opacity .2s}
+.evshot:hover{transform:translateY(-1px)}
+.evshot[disabled]{opacity:.55;cursor:progress}
+.evshot i{width:7px;height:7px;border-radius:50%;background:#D4F53C;display:inline-block}
+.evshot[disabled] i{animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.2}}
+.manbadge{display:inline-block;background:#D4F53C;color:#1E221F;font-size:11px;padding:1px 7px;border-radius:999px;margin-left:6px}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:60;border-radius:inherit}
+.flash.go{animation:shutter .5s ease-out}
+@keyframes shutter{0%{opacity:.95}100%{opacity:0}}
+.evthumbs button{width:58px;height:40px;border-radius:8px;border:2px solid transparent;padding:0;overflow:hidden;background:#ddd;cursor:pointer;transition:border-color .2s,transform .15s}
+.evthumbs button:hover{transform:translateY(-2px)}
+.evthumbs button.on{border-color:var(--ink)}
+.evthumbs img{width:100%;height:100%;object-fit:cover;display:block}
+.evlink{font-size:14px;color:#2C5E35}
+@keyframes boxin{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
+@keyframes scan{0%{top:-4px;opacity:1}100%{top:100%;opacity:.2}}
 /* toast */
 .toasts{position:fixed;right:24px;top:24px;display:flex;flex-direction:column;gap:10px;z-index:9999}
 .toast{background:var(--ink);color:#fff;border-radius:16px;padding:14px 16px;min-width:280px;max-width:380px;box-shadow:0 14px 40px rgba(0,0,0,.25);animation:toastin .5s cubic-bezier(.2,.7,.2,1) both;display:flex;gap:12px;align-items:flex-start}
@@ -143,6 +191,53 @@ h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;le
 @keyframes slidein{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
 @keyframes toastin{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
 @keyframes toastout{to{opacity:0;transform:translateX(40px)}}
+/* ---- agent + priorities ---- */
+.row2{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+@media (min-width:1900px){.row2{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}}
+.t-agent{background:#1E221F;color:#fff;min-height:380px;padding:18px}
+.t-agent .k{color:#C9CCC6}
+.agbtn{border:0;border-radius:999px;height:32px;padding:0 14px;font:inherit;font-size:13px;cursor:pointer;background:var(--lime);color:#1E221F;display:inline-flex;align-items:center;gap:7px;transition:transform .15s}
+.agbtn:hover{transform:translateY(-1px)}
+.agbtn.stop{background:#3A3F3B;color:#fff}
+.agbtn i{width:8px;height:8px;border-radius:50%;background:#1E221F}
+.agbtn.stop i{background:#E5674F;animation:blink 1s infinite}
+.agchip{font-size:12px;color:#9EA29C;border:1px solid #3A3F3B;border-radius:999px;padding:3px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;flex-shrink:1;min-width:0}
+.aggoal{font-size:22px;font-weight:300;margin:12px 0 8px;min-height:28px}
+.agpilot{display:none;background:var(--lime);color:#1E221F;border-radius:12px;padding:9px 12px;font-size:14px;margin-bottom:8px;align-items:center;gap:10px}
+.agpilot.on{display:flex;animation:rise .4s both}
+.agpilot b{font-weight:600}
+.aglog{flex:1;min-height:0;max-height:330px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;font-size:13px;line-height:1.4;padding-right:4px;scrollbar-width:thin;scrollbar-color:#3A3F3B transparent}
+.agl{display:grid;grid-template-columns:18px 1fr;gap:8px;padding:4px 0;animation:rise .35s both}
+.agl .ic{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;font-size:10px;font-weight:700;margin-top:1px}
+.agl.think .tx{color:#9EA29C;font-style:italic}
+.agl.think .ic{background:#2C312D;color:#9EA29C}
+.agl.say .ic{background:#2C312D;color:#fff}
+.agl.tool .tx{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--lime);font-size:12.5px}
+.agl.tool .ic{background:var(--lime);color:#1E221F}
+.agl.result .tx{color:#E6E7E3;padding-left:2px}
+.agl.result .ic{background:transparent;color:#6E736D}
+.agl.alert .ic,.agl.error .ic{background:#E5674F;color:#fff}
+.agl.alert .tx{color:#FFB3A3}
+.agl.goal{margin-top:8px;border-top:1px solid #2C312D;padding-top:9px}
+.agl.goal .tx{font-weight:500;color:#fff}
+.agl.goal .ic{background:#fff;color:#1E221F}
+.agl.operator .ic{background:#F2D24B;color:#1E221F}
+.agl.operator .tx{color:#F2D24B}
+.agl a{color:var(--lime)}
+.agempty{color:#9EA29C;font-size:14px;margin-top:6px}
+.t-prio{background:#FFFFFF;color:var(--ink);min-height:0;padding:18px;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.plist{display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:300px;overflow-y:auto;scrollbar-width:thin}
+.prow{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--surface);cursor:pointer;border:0;text-align:left;font:inherit;color:inherit;transition:background .2s,transform .15s}
+.prow:hover{background:#EEEEE9;transform:translateX(2px)}
+.prow.cur{outline:2px solid var(--ink)}
+.prow .n{font-size:13px;color:var(--muted);text-align:center}
+.prow .a{font-size:15px}
+.prow .r{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tier{font-size:11.5px;border-radius:999px;padding:3px 9px;color:#fff;white-space:nowrap}
+.unck{margin-top:auto;padding-top:10px;font-size:13px;color:var(--muted)}
+.unck span{display:inline-block;background:var(--chip);border-radius:999px;padding:2px 8px;margin:4px 4px 0 0;font-size:12px;color:var(--ink)}
+@media (max-width:760px){.row2{grid-template-columns:1fr}}
 @media (max-width:760px){.titleblock{max-width:100%}.views{top:auto;bottom:120px}.lbl{display:none}.row3{grid-template-columns:1fr}.tiles{grid-template-columns:1fr}.t-green{grid-row:auto}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}}
 </style>
@@ -155,10 +250,14 @@ h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;le
   <div class="top">
     <span class="logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.3" aria-hidden="true"><circle cx="12" cy="12" r="2.2"/><circle cx="5" cy="5" r="2.6"/><circle cx="19" cy="5" r="2.6"/><circle cx="5" cy="19" r="2.6"/><circle cx="19" cy="19" r="2.6"/><path d="M7 7l3.4 3.4M17 7l-3.4 3.4M7 17l3.4-3.4M17 17l-3.4-3.4"/></svg></span>
     <span class="brand">Drone-Eye</span>
+    <label class="hazsel" title="Which disaster is this survey for? Switching starts a new survey.">
+      <span>Disaster</span>
+      <select id="hazSel" aria-label="Disaster type"></select>
+    </label>
     <span class="status" id="status"></span>
     <span class="spacer"></span>
     <button class="iconbtn" id="bell" aria-label="Help needed alerts"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="badge" id="bellCount" hidden>0</span></button>
-    <button class="iconbtn" aria-label="Download claims spreadsheet" title="Download claims spreadsheet" onclick="location.href='/api/report.csv'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 19h14"/></svg></button>
+    <button class="iconbtn" aria-label="Download claim reports for every home (PDF)" title="Download claim reports for every home (PDF). Shift-click for the spreadsheet" onclick="location.href = event.shiftKey ? '/api/report.csv' : '/api/claims.pdf'"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1E221F" stroke-width="1.4" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5"/><path d="M5 19h14"/></svg></button>
   </div>
 
   <div class="titleblock">
@@ -209,15 +308,15 @@ h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;le
       </div>
 
       <div class="lbl" id="lRoof" style="right:2%;top:30px">
-        <svg width="34" height="26" viewBox="0 0 34 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 14L17 3l15 11"/><path d="M6 12v12h22V12" stroke-dasharray="3 3"/></svg>
+        <span class="ic"><svg width="34" height="26" viewBox="0 0 34 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 14L17 3l15 11"/><path d="M6 12v12h22V12" stroke-dasharray="3 3"/></svg></span>
         <div class="t">Roof</div><div class="v">—</div>
       </div>
       <div class="lbl" id="lWalls" style="right:2%;top:160px">
-        <svg width="30" height="26" viewBox="0 0 30 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><rect x="2" y="4" width="26" height="20"/><path d="M2 11h26M2 18h26M10 4v7M20 11v7M10 18v6"/></svg>
+        <span class="ic"><svg width="30" height="26" viewBox="0 0 30 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><rect x="2" y="4" width="26" height="20"/><path d="M2 11h26M2 18h26M10 4v7M20 11v7M10 18v6"/></svg></span>
         <div class="t">Walls</div><div class="v">—</div>
       </div>
       <div class="lbl" id="lGarage" style="left:70px;top:110px">
-        <svg width="34" height="22" viewBox="0 0 34 22" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 20V8l15-6 15 6v12"/><path d="M9 20v-8h16v8"/></svg>
+        <span class="ic"><svg width="34" height="22" viewBox="0 0 34 22" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 20V8l15-6 15 6v12"/><path d="M9 20v-8h16v8"/></svg></span>
         <div class="t">Garage &amp; car</div><div class="v">—</div>
       </div>
       <div class="personlbl" id="personLbl" style="opacity:0">
@@ -247,6 +346,8 @@ h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;le
     <button class="btn dark" id="nextBtn">Next home →</button>
     <button class="btn" id="tourBtn">Auto-fly</button>
     <button class="btn" id="recheckBtn">Re-check this home</button>
+    <button class="btn dark" id="shotBtn" title="Keyboard shortcut: P">Take photo (P)</button>
+    <button class="btn" id="pdfBtn" title="Claim report for this home: photos, damage, payout">Claim PDF ↓</button>
   </div>
 </section>
 
@@ -281,6 +382,7 @@ h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;le
     <div class="blobs" style="background:radial-gradient(circle at 15% 85%,#F3E27A 0,rgba(243,226,122,0) 45%),radial-gradient(circle at 85% 15%,#E6A45A 0,rgba(230,164,90,0) 45%),radial-gradient(circle at 70% 80%,#D9CF8E 0,rgba(217,207,142,0) 45%)"></div>
     <div class="k"><span>Likely insurance payout</span><span id="payTag"></span></div>
     <div class="numrow" style="justify-content:space-between"><span class="num" style="font-size:52px" id="pay">—</span></div>
+    <div class="paywho" id="payWho"></div>
     <svg viewBox="0 0 300 110" width="100%" style="margin-top:auto;overflow:visible" aria-hidden="true" id="wave">
       <path class="draw" d="M8 70 C40 20 70 120 100 70 S160 20 190 70 S250 120 288 52" fill="none" stroke="#fff" stroke-width="1.2"/>
       <path class="draw" d="M8 70 C40 35 70 105 100 70 S160 35 190 70 S250 105 288 52" fill="none" stroke="#fff" stroke-width="1" style="animation-delay:.2s"/>
@@ -289,6 +391,39 @@ h1{margin:0;font-weight:300;font-size:clamp(40px,4.6vw,66px);line-height:1.02;le
       <circle cx="8" cy="70" r="4" fill="#fff"/><circle cx="288" cy="52" r="5" fill="#D4F53C"/>
     </svg>
     <div style="display:flex;justify-content:space-between;font-size:14px;margin-top:6px"><span id="payLo"></span><span id="payHi"></span></div>
+  </article>
+
+  <div class="row2">
+    <article class="tile t-agent" aria-label="AI survey agent" style="animation-delay:.19s">
+      <div class="k"><span>AI survey agent</span><span style="display:flex;gap:8px;align-items:center"><span class="agchip" id="agPlanner">Nemotron</span><button class="agbtn" id="agBtn"><i></i><span>Start agent</span></button></span></div>
+      <div class="aggoal" id="agGoal">Let the AI fly the survey</div>
+      <div class="agpilot" id="agPilot"><span>✈</span><span><b>Pilot:</b> <span id="agPilotTx"></span></span></div>
+      <div class="aglog" id="agLog" aria-live="polite"><div class="agempty">Press Start and Nemotron plans each home: it looks, double-checks, checks for people, prices the claim, files the report and picks the next home. Every step shows up here.</div></div>
+    </article>
+    <article class="tile t-prio" aria-label="Who needs help first" style="animation-delay:.2s">
+      <div class="k"><span>Who needs help first</span><span id="prCount" style="color:var(--muted)"></span></div>
+      <div class="plist" id="prList"></div>
+      <div class="unck" id="prUnck"></div>
+    </article>
+  </div>
+
+  <article class="tile t-evidence" style="animation-delay:.2s" aria-label="What the AI saw">
+    <div class="k"><span>What the AI saw</span><span style="display:flex;gap:10px;align-items:center"><span id="evWhen" style="color:var(--muted)"></span><button class="evshot" id="evShot" title="Grab the current drone frame and have the AI rate it (P)"><i></i><span>Take photo</span></button></span></div>
+    <div class="evwrap">
+      <div class="evimg">
+        <img id="evPic" alt="Camera frame the AI rated, with damage areas marked">
+        <div class="evboxes" id="evBoxes"></div>
+        <div class="evscan" id="evScan"></div>
+        <div class="evempty" id="evEmpty">Waiting for the first AI look at this home…</div>
+      </div>
+      <div class="evside">
+        <div class="evfind" id="evFind"></div>
+        <div class="evsum" id="evSum"></div>
+        <div class="evthumbs" id="evThumbs" aria-label="Earlier photos (lime dot = photo you took)"></div>
+        <a class="evlink" id="evOpen" target="_blank" rel="noopener" hidden>Open marked photo for the claim file ↗</a>
+        <a class="evlink" id="evPdf" href="#" hidden>Download claim report (PDF) ↓</a>
+      </div>
+    </div>
   </article>
 
   <div class="row3">
@@ -356,11 +491,41 @@ const CAT = {
   'Unknown': {lvl: 'none', word: "Can't tell", color: 'var(--unknown)'}
 };
 const COMP_LVL = {none: 'none', minor: 'light', moderate: 'heavy', severe: 'heavy', destroyed: 'destroyed'};
-const WORDS = {
+const W_FIRE = {
   roof:   {none: 'Intact', minor: 'Scorched', moderate: 'Damaged', severe: 'Partly caved in', destroyed: 'Gone', not_visible: 'Not clearly visible'},
   walls:  {none: 'Intact', minor: 'Smoke stains', moderate: 'Burned in spots', severe: 'Badly burned', destroyed: 'Burned down', not_visible: 'Not clearly visible'},
   garage: {none: 'Fine', minor: 'Smoke damage', moderate: 'Damaged', severe: 'Badly burned', destroyed: 'Gone', not_visible: 'Not clearly visible'}
 };
+const W_WIND = {
+  roof:   {none: 'Intact', minor: 'Some shingles missing', moderate: 'Shingles torn off', severe: 'Big sections torn off', destroyed: 'Roof gone', not_visible: 'Not clearly visible'},
+  walls:  {none: 'Intact', minor: 'Siding damage', moderate: 'Damaged', severe: 'Badly damaged', destroyed: 'Collapsed', not_visible: 'Not clearly visible'},
+  trees:  {none: 'Fine', minor: 'Branches down', moderate: 'Trees damaged', severe: 'Trees down', destroyed: 'Trees down', not_visible: 'Not clearly visible'}
+};
+const W_FLOOD = {
+  walls:  {none: 'Dry', minor: 'Wet at the base', moderate: 'Water damage', severe: 'Badly water-damaged', destroyed: 'Washed out', not_visible: 'Not clearly visible'},
+  car:    {none: 'Fine', minor: 'Wet', moderate: 'Flooded', severe: 'Under water', destroyed: 'Swept away', not_visible: 'Not clearly visible'}
+};
+const IC = {
+  roof: '<svg width="34" height="26" viewBox="0 0 34 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 14L17 3l15 11"/><path d="M6 12v12h22V12" stroke-dasharray="3 3"/></svg>',
+  walls: '<svg width="30" height="26" viewBox="0 0 30 26" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><rect x="2" y="4" width="26" height="20"/><path d="M2 11h26M2 18h26M10 4v7M20 11v7M10 18v6"/></svg>',
+  garage: '<svg width="34" height="22" viewBox="0 0 34 22" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 20V8l15-6 15 6v12"/><path d="M9 20v-8h16v8"/></svg>',
+  tree: '<svg width="26" height="28" viewBox="0 0 26 28" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><circle cx="13" cy="10" r="8"/><path d="M13 18v9"/></svg>',
+  water: '<svg width="34" height="24" viewBox="0 0 34 24" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M2 8c4-3 6 3 10 0s6 3 10 0 6 3 10 0"/><path d="M2 16c4-3 6 3 10 0s6 3 10 0 6 3 10 0"/></svg>',
+  car: '<svg width="34" height="20" viewBox="0 0 34 20" fill="none" stroke="#1E221F" stroke-width="1" aria-hidden="true"><path d="M3 13l3-7h20l4 7v4H3z"/><circle cx="9" cy="17" r="2"/><circle cx="25" cy="17" r="2"/></svg>'
+};
+// What the three labels around the 3D house show, per disaster
+const LABELS = {
+  wildfire:  [{title: 'Roof', icon: 'roof', comp: 'roof', words: W_FIRE.roof},
+              {title: 'Walls', icon: 'walls', comp: 'exterior_walls', words: W_FIRE.walls},
+              {title: 'Garage & car', icon: 'garage', comp: ['garage_outbuildings', 'vehicles'], words: W_FIRE.garage}],
+  hurricane: [{title: 'Roof', icon: 'roof', comp: 'roof', words: W_WIND.roof},
+              {title: 'Walls & windows', icon: 'walls', comp: ['exterior_walls', 'windows_doors'], words: W_WIND.walls},
+              {title: 'Trees', icon: 'tree', comp: 'landscaping_vegetation', words: W_WIND.trees, tree: true}],
+  flood:     [{title: 'Water reached', icon: 'water', water: true},
+              {title: 'Walls', icon: 'walls', comp: 'exterior_walls', words: W_FLOOD.walls},
+              {title: 'Car', icon: 'car', comp: 'vehicles', words: W_FLOOD.car}]
+};
+let HZ = 'wildfire', surveyId = null, hazOptsBuilt = false;
 const sureWord = c => c >= .8 ? 'very sure' : c >= .6 ? 'fairly sure' : c >= .4 ? 'somewhat sure' : 'not sure';
 
 // ------------------------------------------------------------------ 3D house
@@ -482,10 +647,113 @@ const LVL_HEX = {none: '#2E6B4A', light: '#C9A227', heavy: '#B5503F', destroyed:
 // ------------------------------------------------------------------ controls
 $('prevBtn').onclick = () => post('/api/sim/step/-1');
 $('nextBtn').onclick = () => post('/api/sim/step/1');
+// ------------------------------------------------------------------ AI agent + priorities
+const TIER_HEX = {1: '#C8462F', 2: '#E07B39', 3: '#3B3F3C', 4: '#7A5BA8', 5: '#C9A227', 6: '#4F8A5B', 9: '#9A9A94'};
+const AG_IC = {think: '…', say: '›', tool: 'ƒ', result: '↳', alert: '!', error: '!', goal: '⌂', operator: '✈', info: 'i'};
+let agLast = 0, agRunning = false;
+$('agBtn').onclick = async () => {
+  await post(agRunning ? '/api/agent/stop' : '/api/agent/start');
+  toast(agRunning ? 'Agent stopped' : 'Agent started', agRunning ? 'Automatic looks are back on.' : 'Nemotron is now planning the survey.');
+};
+function renderAgent(a) {
+  if (!a) { $('agBtn').disabled = true; return; }
+  agRunning = a.running;
+  const b = $('agBtn'); b.classList.toggle('stop', a.running); b.querySelector('span').textContent = a.running ? 'Stop agent' : 'Start agent';
+  setText($('agPlanner'), a.planner + (a.native_tools === false ? ' · JSON actions' : ''));
+  setText($('agGoal'), a.running ? (a.goal || 'Planning…') : (a.log.length ? 'Agent paused' : 'Let the AI fly the survey'));
+  const pilot = a.running && a.operator; $('agPilot').classList.toggle('on', !!pilot);
+  if (pilot) setText($('agPilotTx'), a.operator.text);
+  const fresh = a.log.filter(e => e.id > agLast);
+  if (!fresh.length) return;
+  const box = $('agLog'); const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  if (agLast === 0) box.textContent = '';
+  for (const e of fresh) {
+    const row = el('div'); row.className = 'agl ' + e.kind;
+    const ic = el('span', '', AG_IC[e.kind] || '·'); ic.className = 'ic';
+    const tx = el('span'); tx.className = 'tx';
+    const m = e.kind === 'result' && /(\/reports\/\S+\.pdf)/.exec(e.text);
+    if (m) { tx.append(e.text.slice(0, m.index)); const l = el('a', '', 'open PDF ↗'); l.href = m[1]; l.target = '_blank'; tx.append(l); }
+    else tx.textContent = e.text;
+    row.append(ic, tx); box.appendChild(row);
+    if (e.kind === 'alert' && !firstPoll) toast('Agent alert', e.text);
+  }
+  while (box.children.length > 160) box.removeChild(box.firstChild);
+  agLast = fresh[fresh.length - 1].id;
+  if (atBottom || fresh.length) box.scrollTop = box.scrollHeight;
+}
+function renderPriorities(p, pid) {
+  if (!p) return;
+  setText($('prCount'), `${p.checked} of ${p.total} checked`);
+  const k = JSON.stringify(p.homes.map(h => [h.parcel_id, h.tier, h.reasons])) + pid;
+  if ($('prList').dataset.k !== k) {
+    $('prList').dataset.k = k; $('prList').textContent = '';
+    if (!p.homes.length) $('prList').appendChild(el('div', 'color:var(--muted);font-size:14px', 'Nothing rated yet. The most urgent homes will rise to the top.'));
+    p.homes.forEach((h, i) => {
+      const r = el('button'); r.className = 'prow' + (h.parcel_id === pid ? ' cur' : '');
+      r.title = 'Fly here'; r.onclick = () => post('/api/sim/goto/' + encodeURIComponent(h.parcel_id));
+      const n = el('span', '', String(i + 1)); n.className = 'n';
+      const mid = el('div'); const a = el('div', '', h.address); a.className = 'a';
+      const why = el('div', '', h.reasons.filter(x => x !== h.damage_category).slice(0, 2).join(' · ') || h.damage_category); why.className = 'r';
+      mid.append(a, why);
+      const t = el('span', `background:${TIER_HEX[h.tier]}`, h.tier_label); t.className = 'tier';
+      r.append(n, mid, t); $('prList').appendChild(r);
+    });
+  }
+  const uk = String(p.unchecked) + (p.unchecked_ids || []).join();
+  if ($('prUnck').dataset.k !== uk) {
+    $('prUnck').dataset.k = uk; $('prUnck').textContent = '';
+    if (p.unchecked) {
+      $('prUnck').append(`Not checked yet (${p.unchecked}):`);
+      (p.unchecked_ids || []).slice(0, 10).forEach(id => { const pp = parcels.find(x => x.parcel_id === id); $('prUnck').appendChild(el('span', '', pp ? pp.address.split(',')[0] : id)); });
+    } else $('prUnck').append('Every home on this survey has been checked.');
+  }
+}
+
+// ---- manual photo
+let shotWait = null;   // {pid, t, n} while waiting for the AI to rate a photo you took
+function flashEl(host) { if (!host) return; let f = host.querySelector(':scope > .flash'); if (!f) { f = el('div'); f.className = 'flash'; host.appendChild(f); } f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); }
+function setShotBusy(b) { for (const id of ['shotBtn', 'evShot']) { const x = $(id); if (x) x.disabled = b; } const t = $('evShot') && $('evShot').querySelector('span'); if (t) t.textContent = b ? 'Rating…' : 'Take photo'; }
+function takePhoto() {
+  if (shotWait && Date.now() - shotWait.t < 4000) return;   // no double clicks
+  const cur = window.__cur;
+  shotWait = {pid: cur ? cur.parcel.parcel_id : null, t: Date.now(), n: cur ? (cur.history || []).filter(h => h._manual).length : 0};
+  flashEl($('hero')); flashEl(document.querySelector('.evimg'));
+  setShotBusy(true);
+  post('/api/capture');
+  toast('Photo taken', 'Nemotron is rating it. It will show up under “What the AI saw”.');
+}
+function checkShot(cur) {
+  if (!shotWait) return;
+  const n = cur && cur.parcel.parcel_id === shotWait.pid ? (cur.history || []).filter(h => h._manual).length : -1;
+  if (n > shotWait.n) { shotWait = null; setShotBusy(false); evPinned = null; }
+  else if (Date.now() - shotWait.t > 45000) { shotWait = null; setShotBusy(false); toast('Photo not rated yet', 'The AI is slow right now. Try again in a moment.'); }
+}
+function downloadClaim() {
+  const cur = window.__cur;
+  if (!cur || !cur.assessment) { toast('No rating yet', 'Take a photo of this home first, then download the report.'); return; }
+  toast('Building claim report', cur.parcel.address.split(',')[0] + ' · PDF with photos and payout');
+  location.href = `/api/property/${encodeURIComponent(cur.parcel.parcel_id)}/claim.pdf`;
+}
+$('pdfBtn').onclick = downloadClaim;
+$('evPdf').onclick = e => { e.preventDefault(); downloadClaim(); };
+$('shotBtn').onclick = takePhoto;
+$('evShot').onclick = takePhoto;
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  const tg = e.target && e.target.tagName;
+  if (tg === 'INPUT' || tg === 'SELECT' || tg === 'TEXTAREA') return;
+  if (e.key === 'p' || e.key === 'P') { e.preventDefault(); takePhoto(); }
+});
 $('recheckBtn').onclick = () => { post('/api/assess_now'); toast('Re-checking this home', 'A fresh AI look takes a few seconds.'); };
 let tourOn = false;
 $('tourBtn').onclick = () => post('/api/sim/tour', {on: !tourOn, dwell_s: 8});
 $('bell').onclick = () => $('helpTile').scrollIntoView({behavior: 'smooth', block: 'center'});
+
+$('hazSel').onchange = async e => {
+  const t = e.target.value;
+  await post('/api/disaster', {type: t});
+  toast('New survey: ' + e.target.selectedOptions[0].textContent, 'Ratings start over for this disaster type.');
+};
 
 // ------------------------------------------------------------------ toasts
 function toast(title, sub) {
@@ -501,6 +769,21 @@ function toast(title, sub) {
 const seenAlerts = new Set(); let firstPoll = true, lastPid = null;
 function render(s) {
   const live = s.live || {}, pose = live.pose || {}, cur = s.current;
+  if (s.hazard) {
+    if (!hazOptsBuilt) {
+      s.hazard.options.forEach(o => { const op = el('option', '', o.label); op.value = o.type; $('hazSel').appendChild(op); });
+      hazOptsBuilt = true;
+    }
+    if ($('hazSel').value !== s.hazard.type) $('hazSel').value = s.hazard.type;
+    HZ = s.hazard.type;
+    if (surveyId !== null && surveyId !== s.hazard.survey_id) { modelKey = ''; seenAlerts.clear(); $('alist').dataset.k = ''; }
+    surveyId = s.hazard.survey_id;
+    LABELS[HZ].forEach((cfg, i) => {
+      const box = $(['lRoof', 'lWalls', 'lGarage'][i]);
+      setText(box.querySelector('.t'), cfg.title);
+      if (box.dataset.icon !== cfg.icon) { box.querySelector('.ic').innerHTML = IC[cfg.icon]; box.dataset.icon = cfg.icon; }
+    });
+  }
   tourOn = !!pose.tour_on; $('tourBtn').classList.toggle('on', tourOn); $('tourBtn').textContent = tourOn ? 'Auto-fly: on' : 'Auto-fly';
 
   // status line
@@ -541,16 +824,26 @@ function render(s) {
     garage: COMP_LVL[comps.garage_outbuildings] || overall,
     person: here.length > 0,
     smoke: !!(a && (a.smoke_present || a.active_fire || overall === 'heavy' || overall === 'destroyed')),
-    fire: !!(a && a.active_fire), pending: !!cur && !a
+    fire: !!(a && a.active_fire), pending: !!cur && !a,
+    hazard: HZ,
+    waterM: a && a.water_depth_ft != null ? a.water_depth_ft * 0.3048 : (e && e.water_depth_ft != null ? e.water_depth_ft * 0.3048 : null),
+    treeOnHouse: !!(a && (a.tree_on_structure || (HZ === 'hurricane' && ['severe', 'destroyed'].includes(comps.landscaping_vegetation) && ['heavy', 'destroyed'].includes(overall))))
   });
-  const lbl = (id, key, comp) => {
-    const v = a ? (WORDS[key][comps[comp]] || (cat ? cat.word : '—')) : '—';
+  const RANK = ['not_visible', 'none', 'minor', 'moderate', 'severe', 'destroyed'];
+  LABELS[HZ].forEach((cfg, i) => {
+    const id = ['lRoof', 'lWalls', 'lGarage'][i];
+    let v = '—';
+    if (a && cfg.water) {
+      const ft = a.water_depth_ft != null ? a.water_depth_ft : (e && e.water_depth_ft);
+      v = ft == null ? 'Not clearly visible' : ft < 0.3 ? 'Below the floor' : `About ${ft < 3 ? ft.toFixed(1) : Math.round(ft)} ft high`;
+    } else if (a) {
+      const keys = Array.isArray(cfg.comp) ? cfg.comp : [cfg.comp];
+      const worst = keys.map(k => comps[k] || 'not_visible').sort((x, y) => RANK.indexOf(y) - RANK.indexOf(x))[0];
+      v = cfg.tree && a.tree_on_structure ? 'Tree on the house' : (cfg.words[worst] || (cat ? cat.word : '—'));
+    }
     const node = $(id).querySelector('.v');
     if (setText(node, v)) { $(id).classList.remove('flash'); void $(id).offsetWidth; $(id).classList.add('flash'); }
-  };
-  lbl('lRoof', 'roof', 'roof'); lbl('lWalls', 'walls', 'exterior_walls');
-  const gv = comps.garage_outbuildings && comps.garage_outbuildings !== 'not_visible' ? 'garage_outbuildings' : 'vehicles';
-  lbl('lGarage', 'garage', gv);
+  });
 
   if (a && a.damage_category === 'Unknown') {
     $('pct').dataset.v = 0; setText($('pct'), '—');
@@ -558,7 +851,7 @@ function render(s) {
     setText($('sure'), 'Point the camera at the home, or press Re-check');
   } else if (a) {
     tween($('pct'), Math.round(a.damage_percent || 0), v => Math.round(v) + '%');
-    setText($('pctCap'), overall === 'none' ? 'no damage found' : 'of the home is gone');
+    setText($('pctCap'), overall === 'none' ? 'no damage found' : (HZ === 'wildfire' ? 'of the home is gone' : 'of the home is damaged'));
     setText($('sure'), `AI is ${sureWord(a.confidence || 0)} (${Math.round((a.confidence || 0) * 100)}%)`);
   } else { $('pct').dataset.v = 0; setText($('pct'), '—'); setText($('pctCap'), cur ? 'waiting for the first AI look' : ''); setText($('sure'), ''); }
 
@@ -581,7 +874,7 @@ function render(s) {
   });
 
   // help needed
-  const open = (s.alerts || []).filter(x => x.kind === 'life' && !x.acknowledged);
+  const open = (s.alerts || []).filter(x => (x.kind === 'life' || (x.kind === 'agent' && x.urgency === 'people')) && !x.acknowledged);
   tween($('helpN'), open.length, v => String(Math.round(v)));
   $('helpTile').classList.toggle('calm', !open.length);
   setText($('helpUnit'), open.length ? (open.length === 1 ? 'person or animal may need help' : 'people or animals may need help') : 'no one needs help right now');
@@ -601,7 +894,7 @@ function render(s) {
     });
   }
   open.forEach(x => {
-    if (!seenAlerts.has(x.id)) { seenAlerts.add(x.id); if (!firstPoll) toast('Possible sign of life', `${x.label} · ${(x.address || '').split(',')[0]} (${x.source})`); }
+    if (!seenAlerts.has(x.id)) { seenAlerts.add(x.id); if (!firstPoll && x.kind === 'life') toast('Possible sign of life', `${x.label} · ${(x.address || '').split(',')[0]} (${x.source})`); }
   });
   $('sendBtn').onclick = () => {
     const top = open[0]; if (!top) return;
@@ -609,18 +902,33 @@ function render(s) {
   };
 
   // payout
-  if (e && e.status === 'ok') {
+  const who = $('payWho'); who.classList.remove('bad');
+  if (e && e.status === 'ok' && e.covered === false) {
+    $('pay').dataset.v = 0; setText($('pay'), '$0');
+    setText($('payTag'), 'Not covered');
+    who.classList.add('bad'); setText(who, 'No flood policy on file. Homeowners insurance does not cover floods.');
+    setText($('payLo'), 'Uninsured loss about ' + money(e.uninsured_loss)); setText($('payHi'), '');
+  } else if (e && e.status === 'ok') {
     tween($('pay'), e.net_estimate, money);
     setText($('payLo'), money(e.range_low) + ' low'); setText($('payHi'), money(e.range_high) + ' high');
     setText($('payTag'), e.total_loss ? 'Total loss' : (e.net_estimate === 0 ? 'No claim' : ''));
-  } else { $('pay').dataset.v = 0; setText($('pay'), '—'); setText($('payLo'), a ? 'Not enough to estimate' : 'Waiting for the AI'); setText($('payHi'), ''); setText($('payTag'), ''); }
+    let w = 'Paid by: ' + e.paid_by;
+    if (e.deductible_note && e.deductible_note !== 'policy deductible') w += ` · ${money(e.deductible)} ${e.deductible_note}`;
+    if (e.uninsured_loss > 0) w += ` · ${money(e.uninsured_loss)} over the policy limit`;
+    setText(who, w);
+  } else {
+    $('pay').dataset.v = 0; setText($('pay'), '—'); setText(who, '');
+    setText($('payLo'), a ? 'Not enough to estimate' : 'Waiting for the AI'); setText($('payHi'), ''); setText($('payTag'), '');
+  }
 
   // safety
   const hz = (a && a.hazards) || [];
   let si = 0;
-  if (a && a.active_fire) si = 3;
-  else if (hz.length >= 3 || (overall === 'destroyed' && hz.some(h => /collap|fall|unstable/i.test(h)))) si = 2;
-  else if (hz.length) si = 1;
+  const ft = a && a.water_depth_ft != null ? a.water_depth_ft : 0;
+  if (a && a.active_fire && HZ === 'wildfire') si = 3;
+  else if (HZ === 'flood' && ft >= 3) si = 3;
+  else if (hz.length >= 3 || (overall === 'destroyed' && hz.some(h => /collap|fall|unstable/i.test(h))) || hz.some(h => /power line|gas leak|electr/i.test(h)) || (HZ === 'flood' && ft >= 1)) si = 2;
+  else if (hz.length || (HZ === 'flood' && ft > 0.2) || (a && a.tree_on_structure)) si = 1;
   setText($('safeWord'), a ? ['Safe', 'Caution', 'Danger', 'Keep out'][si] : '—');
   $('safeDot').setAttribute('cx', [16, 62, 112, 172][si]);
   setText($('hazards'), a ? (hz.length ? hz.slice(0, 2).join(' · ') : 'No hazards seen') : '');
@@ -637,7 +945,75 @@ function render(s) {
     if (pose.lat) { droneMk.setLatLng([pose.lat, pose.lon]); rayLine.setLatLngs([[pose.lat, pose.lon], [live.look_point.lat, live.look_point.lon]]); }
   }
   if (pid !== lastPid && lastPid !== null && cur) toast('Now looking at', cur.parcel.address);
+  window.__cur = cur; checkShot(cur);
+  renderAgent(s.agent); renderPriorities(s.priorities, pid);
+  renderEvidence(cur);
   lastPid = pid; firstPoll = false;
+}
+
+
+// ------------------------------------------------------------------ evidence (what the AI saw)
+const SEV_HEX = {minor: '#C9A227', moderate: '#E07B39', severe: '#C8462F', destroyed: '#8E1F1A'};
+const SEV_WORD = {minor: 'Minor', moderate: 'Moderate', severe: 'Severe', destroyed: 'Destroyed'};
+const PART = {roof: 'Roof', exterior_walls: 'Walls', windows_doors: 'Windows & doors', structural_frame: 'Frame',
+  garage_outbuildings: 'Garage', fences_walls: 'Fence', vehicles: 'Car', landscaping_vegetation: 'Yard & trees', other: 'Other'};
+let evPid = null, evPinned = null, evShownKey = '';
+function renderEvidence(cur) {
+  const hist = (cur && cur.history) || [], pid = cur ? cur.parcel.parcel_id : null;
+  if (pid !== evPid) { evPid = pid; evPinned = null; }
+  const pick = (evPinned && hist.find(h => h._timestamp === evPinned)) || hist[0];
+  $('evEmpty').style.display = pick ? 'none' : 'flex';
+  $('evOpen').hidden = !pick;
+  $('evPdf').hidden = !(cur && cur.assessment);
+  // thumbnails
+  const tk = hist.map(h => h._timestamp).join(',') + '|' + (pick && pick._timestamp);
+  if ($('evThumbs').dataset.k !== tk) {
+    $('evThumbs').dataset.k = tk; $('evThumbs').textContent = '';
+    if (hist.length > 1) hist.forEach((h, i) => {
+      const b = el('button'); b.title = `${h._by === 'agent' ? 'Agent photo' : h._manual ? 'Photo you took' : 'Automatic photo'} ${hist.length - i}: ${h.damage_category} · ${ago(h._timestamp)}`; if (h._manual) b.classList.add('man');
+      b.setAttribute('aria-label', b.title); b.classList.toggle('on', h === pick);
+      const im = el('img'); im.src = h._snapshot; im.alt = ''; b.appendChild(im);
+      b.onclick = () => { evPinned = i === 0 ? null : h._timestamp; renderEvidence(cur); };
+      $('evThumbs').appendChild(b);
+    });
+  }
+  if (!pick) { $('evBoxes').textContent = ''; $('evFind').textContent = ''; setText($('evSum'), ''); setText($('evWhen'), ''); evShownKey = ''; return; }
+  setText($('evWhen'), `${pick._by === 'agent' ? 'Agent photo · ' : pick._manual ? 'Your photo · ' : ''}${ago(pick._timestamp)} · photo ${hist.length - hist.indexOf(pick)} of ${hist.length}`);
+  $('evOpen').href = pick._snapshot_marked || pick._snapshot;
+  const key = pick._snapshot;
+  if (key === evShownKey) return;           // only rebuild when a different picture is shown
+  evShownKey = key;
+  const pic = $('evPic'); pic.style.opacity = .35; pic.onload = () => { pic.style.opacity = 1; }; pic.src = pick._snapshot;
+  const sc = $('evScan'); sc.classList.remove('go'); void sc.offsetWidth; sc.classList.add('go');
+  // boxes
+  const boxes = $('evBoxes'); boxes.textContent = '';
+  const add = (b, color, label, det, i) => {
+    const d = el('div', `left:${b[0] * 100}%;top:${b[1] * 100}%;width:${(b[2] - b[0]) * 100}%;height:${(b[3] - b[1]) * 100}%;border-color:${color};animation-delay:${.25 + i * .12}s`);
+    d.className = 'evbox' + (det ? ' det' : ''); d.dataset.i = i;
+    const t = el('span', `background:${color}`, label); d.appendChild(t); boxes.appendChild(d); return d;
+  };
+  const regs = pick.damage_regions || [];
+  regs.forEach((r, i) => add(r.box, SEV_HEX[r.severity] || '#E07B39', `${PART[r.part] || 'Other'} · ${SEV_WORD[r.severity] || ''}`, false, i));
+  (pick._detections || []).forEach((d, j) => add(d.box, d.kind === 'life' ? '#E8382E' : '#FF8A00', d.label === 'fire' ? 'Fire' : d.label.charAt(0).toUpperCase() + d.label.slice(1), true, regs.length + j));
+  // findings list (hover a finding to highlight its box)
+  const f = $('evFind'); f.textContent = '';
+  if (!regs.length) {
+    const row = el('div', 'animation-delay:.1s'); row.className = 'evf';
+    row.append(el('span', 'background:#B8B8B0'), el('div', '', 'The AI rated the whole home but did not mark specific spots on this pass.'));
+    row.firstChild.className = 'sw'; f.appendChild(row);
+  }
+  regs.forEach((r, i) => {
+    const row = el('div', `animation-delay:${.15 + i * .08}s`); row.className = 'evf';
+    const sw = el('span', `background:${SEV_HEX[r.severity]}`); sw.className = 'sw';
+    const tx = el('div'); const b = el('b', '', `${PART[r.part] || 'Other'} · ${SEV_WORD[r.severity] || ''}`); tx.appendChild(b);
+    if (r.note) tx.appendChild(el('small', '', r.note));
+    row.append(sw, tx);
+    row.onmouseenter = () => { boxes.classList.add('dim'); boxes.querySelector(`[data-i="${i}"]`)?.classList.add('hot'); };
+    row.onmouseleave = () => { boxes.classList.remove('dim'); boxes.querySelectorAll('.hot').forEach(x => x.classList.remove('hot')); };
+    f.appendChild(row);
+  });
+  const a = cur.assessment;
+  setText($('evSum'), a && a.adjuster_summary && pick === hist[0] ? a.adjuster_summary : '');
 }
 
 async function tick() {

@@ -16,10 +16,13 @@ from .pipeline import Pipeline
 STATIC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 
 
-def build_app(pipe: Pipeline) -> FastAPI:
+def build_app(pipe: Pipeline, agent=None) -> FastAPI:
     app = FastAPI(title="Drone-Eye: wildfire property assessment")
     state, tel, parcels = pipe.state, pipe.tel, pipe.parcels
     app.mount("/snapshots", StaticFiles(directory=state.snapshot_dir), name="snapshots")
+    reports = os.path.join(os.path.dirname(state.snapshot_dir), "reports")
+    os.makedirs(reports, exist_ok=True)
+    app.mount("/reports", StaticFiles(directory=reports), name="reports")
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     # ---------- pages ----------
@@ -76,13 +79,47 @@ def build_app(pipe: Pipeline) -> FastAPI:
                 b = state.best(pid)
                 summary[pid] = b["damage_category"] if b else None
         pid = live.get("target_parcel_id")
+        from .hazards import get as get_hazard, options
         return {
             "live": live,
+            "hazard": {"type": state.hazard, "label": get_hazard(state.hazard)["label"], "options": options(),
+                       "survey_id": state.survey_id},
             "current": state.property_view(pid) if pid else None,
             "alerts": alerts,
             "parcel_status": summary,
             "unmatched_assessment": live.get("unmatched_assessment"),
+            "agent": agent.view(40) if agent else None,
+            "priorities": _prio_short(),
         }
+
+    def _prio_short():
+        from .triage import rank
+        r = rank(state)
+        return {"homes": r["homes"][:8], "unchecked": len(r["unchecked"]), "checked": r["checked"],
+                "total": r["total"], "counts": r["counts"],
+                "unchecked_ids": [u["parcel_id"] for u in r["unchecked"]]}
+
+    @app.get("/api/priorities")
+    def priorities():
+        from .triage import rank
+        return rank(state)
+
+    @app.get("/api/agent")
+    def agent_view():
+        return agent.view(300) if agent else {"running": False, "log": []}
+
+    @app.post("/api/agent/start")
+    def agent_start():
+        if not agent:
+            return JSONResponse({"ok": False, "error": "agent not available"}, status_code=400)
+        agent.start()
+        return {"ok": True}
+
+    @app.post("/api/agent/stop")
+    def agent_stop():
+        if agent:
+            agent.stop()
+        return {"ok": True}
 
     @app.get("/api/debug/ai")
     def debug_ai():
@@ -90,6 +127,17 @@ def build_app(pipe: Pipeline) -> FastAPI:
         w = pipe.worker
         return {"engine": (w.primary or w.fallback).name, "busy": w.busy, "calls": w.calls,
                 "last_error": w.last_error, "last_raw_reply": (w.last_raw or "")[:6000], "last_result": w.last_result}
+
+    @app.get("/api/debug/ai/frame.jpg")
+    def debug_ai_frame():
+        """The exact image last sent to the AI, downscaled the same way."""
+        import cv2
+        from .assess import _downscale
+        f = pipe.worker.last_frame
+        if f is None:
+            return Response(b"", status_code=404)
+        ok, buf = cv2.imencode(".jpg", _downscale(f), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return Response(buf.tobytes(), media_type="image/jpeg")
 
     @app.get("/api/parcels")
     def api_parcels():
@@ -121,6 +169,23 @@ def build_app(pipe: Pipeline) -> FastAPI:
         return {"ok": True, "alerts": [a["id"] for a in alerts]}
 
     # ---------- controls ----------
+    @app.post("/api/disaster")
+    async def set_disaster(req: Request):
+        """Switch disaster type: {"type": "wildfire" | "hurricane" | "flood"}. Starts a new survey."""
+        data = await req.json()
+        try:
+            state.set_hazard(data.get("type", ""))
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, 400)
+        print(f"[survey] disaster type set to {state.hazard}: new survey started")
+        return {"ok": True, "type": state.hazard}
+
+    @app.post("/api/capture")
+    def capture():
+        """Take a photo from the drone feed right now and have the AI rate it (kept permanently)."""
+        pipe.force_assess(manual=True)
+        return {"ok": True}
+
     @app.post("/api/assess_now")
     def assess_now():
         pipe.force_assess()
@@ -150,6 +215,28 @@ def build_app(pipe: Pipeline) -> FastAPI:
         return {"generated_at": time.time(),
                 "properties": [state.property_view(pid) for pid in parcels.parcels if state.best(pid)],
                 "alerts": state.alerts}
+
+    def _pdf(pids, name):
+        from .claim_pdf import build_claim_pdf
+        data = build_claim_pdf(state, pids, prepared_for=getattr(state, "report_to", "Claims adjuster"),
+                               photo_limit=getattr(state, "report_photos", 6))
+        if not data:
+            return Response("No AI rating for this home yet. Point the drone at it or press Take photo first.",
+                            status_code=404, media_type="text/plain")
+        return Response(data, media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.get("/api/property/{parcel_id}/claim.pdf")
+    def claim_pdf(parcel_id: str):
+        p = parcels.get(parcel_id)
+        if not p:
+            return Response("Unknown home", status_code=404, media_type="text/plain")
+        slug = "".join(ch if ch.isalnum() else "_" for ch in p["address"].split(",")[0]).strip("_")
+        return _pdf([parcel_id], f"Drone-Eye_claim_{slug}_{time.strftime('%Y%m%d-%H%M')}.pdf")
+
+    @app.get("/api/claims.pdf")
+    def claims_pdf():
+        return _pdf(list(parcels.parcels), f"Drone-Eye_survey_{time.strftime('%Y%m%d-%H%M')}.pdf")
 
     @app.get("/api/report.csv")
     def report_csv():

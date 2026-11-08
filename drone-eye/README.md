@@ -23,32 +23,99 @@ radar module ──► /api/radar ──► geolocate ──► alerts ◄──
 
 ## Quick start
 
-Python 3.10+ on Windows or macOS. Set the API key in your terminal each session; never put it in a file in this repo.
-
-**Windows (PowerShell)**
-```powershell
-cd drone-eye
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1          # if blocked: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-pip install -r requirements.txt
-$env:NVIDIA_API_KEY="nvapi-..."         # from build.nvidia.com
-python run.py --source 0 --provider nemotron --assess-interval 6 --max-assess-per-house 20
-```
-
-**macOS (Terminal)**
 ```bash
-cd drone-eye
-python3 -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
-export NVIDIA_API_KEY="nvapi-..."
-python run.py --source 0 --provider nemotron --assess-interval 6 --max-assess-per-house 20
+export NVIDIA_API_KEY=nvapi-...            # or ANTHROPIC_API_KEY / GEMINI_API_KEY; with none, a crude offline heuristic
+python run.py --source 0                   # webcam
+# open http://localhost:8000
 ```
+Windows PowerShell: activate with `.venv\Scripts\Activate.ps1` and set the key with `$env:NVIDIA_API_KEY="nvapi-..."`.
 
-Open http://localhost:8000. The original dashboard is still at `/classic`. If the AI ratings look wrong, `/api/debug/ai` shows Nemotron's last raw reply. `python run.py --list-cameras` lists the camera numbers you can pass to `--source`. Run only one copy at a time: on Windows a second copy can quietly share port 8000.
+### Choosing the AI
+| Provider | Key | Default model | Notes |
+|---|---|---|---|
+| `nemotron` | `NVIDIA_API_KEY` (build.nvidia.com) | `nvidia/nemotron-3.5-super-vl-120b-a12b` | NVIDIA's hosted API. Set `NVIDIA_BASE_URL` to use a local NIM instead. |
+| `claude` | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` | Most reliable structured output |
+| `gemini` | `GEMINI_API_KEY` | `gemini-3.8-flash` | The free tier has a low daily request cap, so by default each house is assessed only once |
 
-### Using the Potensic Atom drone
-The Atom has no open API, so you mirror the phone running PotensicPro to the PC (scrcpy on Android, an AirPlay receiver on iPhone). In OBS, add a Window Capture of the mirror and click **Start Virtual Camera**. Then run with `--source 1` (or the number `--list-cameras` shows).
+`--provider auto` (the default) uses whichever key is set. If more than one is set, it picks NVIDIA, then Claude, then Gemini. Force a choice with `--provider nemotron`. If the AI call fails (bad key, rate limit, no Wi-Fi), that frame falls back to the offline heuristic and the dashboard shows an "AI error" chip.
+
+Use the dashboard's **Prev / Next house**, **Auto-tour** and map clicks to "fly" the simulated drone until the real location module is connected. **Assess now** forces a fresh AI pass. **Export claims CSV** gives the adjuster's worklist.
+
+## Evidence photos
+
+Every time the AI rates a home, the exact camera frame is saved, and the AI marks where the damage is (roof, walls, windows…) with boxes. The dashboard's **What the AI saw** panel shows the photo with those boxes plus the detector's person and fire boxes. Hover a finding to highlight its box, and click a thumbnail to see an earlier photo. **Open marked photo** gives a copy with the boxes burned in, for the claim file.
+
+**Take your own photo:** click **Take photo** (or press **P**) when the drone has a good angle. The current frame is sent to the AI right away; it shows up with a lime dot in the thumbnail strip and doesn't use up the automatic looks.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `--max-assess-per-house N` | 8 (Nemotron) | Automatic AI looks each time the drone arrives at a home. `0` = keep looking every `--assess-interval` seconds |
+| `--assess-interval S` | 10 | Seconds between automatic looks at the same home |
+| `--keep-photos N` | 30 | Automatic photos kept per home (oldest deleted first). Photos you take are always kept |
+
+Photos are saved in `output/snapshots/`.
+
+## AI survey agent (Nemotron)
+
+Press **Start agent** on the dashboard (or run with `--agent`). Nemotron 3.5 Super VL then runs the survey home by home, choosing its own next step with tool calls:
+
+| Tool | What it does |
+|---|---|
+| `look_at_home` | Captures the drone frame and has Nemotron's vision rate the damage |
+| `request_new_angle` | Asks the pilot for a better view when the rating is Unknown or unsure, then looks again |
+| `lookup_property` / `check_for_people` | Occupants and pets on file, coverage, and signs of life from the camera, detector and radar |
+| `raise_alert` | Alerts responders, e.g. "3 people live here, home destroyed, nobody confirmed safe" |
+| `estimate_payout` / `file_claim_report` | Prices the claim and writes the claim PDF to `output/reports/` |
+| `survey_status` / `next_home` | Reads the priority list and picks the most urgent home not yet surveyed (in sim mode it flies there; with a real drone it tells the pilot) |
+
+Every thought, tool call and result shows up live in the **AI survey agent** panel. While the agent runs, automatic looks pause so it decides when to look. Without an NVIDIA key, the same tools run on fixed rules ("offline rules"), so the demo still works.
+
+How it uses the API: OpenAI-style `tools` with `tool_choice: "auto"` and `reasoning_effort: "low"`, so a short reasoning trace shows in the log. If the endpoint refuses tool calls, the agent switches to JSON actions automatically. Damage ratings use `response_format: json_schema`, which NVIDIA's docs recommend so every required field comes back.
+
+## Who needs help first
+
+The **Who needs help first** panel ranks every home so no one is overlooked:
+1. People seen (camera, onboard detector or radar)
+2. Occupants on file, home Major or Destroyed, nobody confirmed safe
+3. Unsafe site (fire, collapse, power lines, deep water)
+4. Uninsured loss
+5. Damaged
+6. No damage
+
+Below the list are the homes not checked yet. Click a home to fly there. Pressing **Handled** on an alert marks those occupants as confirmed safe. The same ranking is at `/api/priorities`.
+
+## Claim report (PDF)
+
+Click **Claim PDF ↓** under the 3D house (or **Download claim report** in "What the AI saw") to get a PDF for the home in view. It has:
+
+- property and policy details
+- the AI's damage rating for each part of the home
+- the payout breakdown (rebuild, garage and fence, belongings, debris, deductible, net, likely range)
+- hazards and signs of life
+- the marked photos, with time, rating and findings for each
+- a sign-off line for the reviewing adjuster
+
+The download icon in the top bar gives one PDF for every rated home (shift-click it for the CSV spreadsheet).
+
+| Setting | Default | What it does |
+|---|---|---|
+| `--report-to "State Farm Claims"` | Claims adjuster | Name on the "Prepared for" line |
+| `--report-photos N` | 6 | Photos per home in the PDF (the rated photo first, then ones you took, then the newest automatic) |
+
+Endpoints: `/api/property/{parcel_id}/claim.pdf`, `/api/claims.pdf`. The report is labeled as a preliminary AI-assisted estimate for adjuster review, not a coverage decision.
+
+## Disaster types
+
+Pick one with `--disaster wildfire|hurricane|flood`, or switch from the **Disaster** menu on the dashboard. Switching starts a new survey.
+
+| | What the AI looks for | How the claim is priced | 3D house shows |
+|---|---|---|---|
+| **Wildfire** | Burned/charred parts, active fire, smoke | Homeowners policy | Scorching, roof caving in, walls burning down, flames, smoke, embers |
+| **Hurricane / wind** | Missing shingles, tarps, roof torn off, trees on the house, broken windows | Homeowners policy with a 2% hurricane deductible, plus tree removal | Missing shingles, blue tarp, roof lifting or blown away, walls falling outward, trees blown over, debris |
+| **Flood** | How high the water reached (`water_depth_ft`), from waterlines, doors, cars | **Flood policy only.** Homeowners policies exclude flood, so a home without a flood policy shows its loss as **uninsured** | Muddy water at the estimated height, waterline stain, car under water |
+
+About 40% of the demo homes carry a demo flood policy (`flood_policy` in `data/parcels.json`). Every number in the pricing is a labeled assumption in `droneeye/pricing.py`. Add a new disaster type in `droneeye/hazards.py`.
 
 ## Camera options
 

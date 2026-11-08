@@ -44,17 +44,23 @@ class Pipeline:
         self._frame_no = 0
         self._raw = None
         self._force = False
+        self._force_manual = False
+        self._force_by = "you"
+        self.auto_paused = False      # True while the survey agent decides when to look
         self._target = None
         self._target_since = 0.0
         self._visit_submits = 0
         self._last_submit = 0.0
         self._streaks = collections.Counter()
+        self._survey = -1
         self._fps_t = collections.deque(maxlen=30)
         self.running = True
 
     # ---------- public ----------
-    def force_assess(self):
+    def force_assess(self, manual: bool = False, by: str = "you"):
         self._force = True
+        self._force_manual = manual
+        self._force_by = by
 
     def latest_jpeg(self, after_no=-1, timeout=1.0):
         with self._jpeg_cv:
@@ -91,14 +97,19 @@ class Pipeline:
         if parcel is None:
             address = self.geocoder.lookup(lat, lon)
 
-        if pid != self._target:
+        if pid != self._target or self._survey != self.state.survey_id:   # new house, or disaster type switched
             self._target, self._target_since, self._visit_submits = pid, now, 0
+            self._survey = self.state.survey_id
             self._streaks.clear()
 
         # --- on-device detection ---
         dets = self.detector.detect(frame)
-        fire_ratio, fire_dets = detect_fire(frame)
-        dets += fire_dets
+        from .hazards import get as get_hazard
+        if get_hazard(self.state.hazard)["fire_detector"]:   # flame colours mean nothing in a flood or storm
+            fire_ratio, fire_dets = detect_fire(frame)
+            dets += fire_dets
+        else:
+            fire_ratio = 0.0
 
         labels_now = collections.Counter(d.label for d in dets if d.kind == "life")
         for label in list(self._streaks):
@@ -116,12 +127,18 @@ class Pipeline:
         # --- schedule AI assessment ---
         settled = now - self._target_since >= self.settle_s
         due = (self._visit_submits == 0 or now - self._last_submit >= self.assess_interval_s)
-        if self._force or (settled and due and self._visit_submits < self.max_auto):
-            ctx = {"onboard_detections": summary, "onboard_life": life_summary,
+        if self._force or (not self.auto_paused and settled and due and (self.max_auto <= 0 or self._visit_submits < self.max_auto)):
+            fh, fw = frame.shape[:2]
+            det_frac = [{"label": d.label, "kind": d.kind, "conf": round(d.conf, 2),
+                         "box": [round(d.box[0] / fw, 4), round(d.box[1] / fh, 4), round(d.box[2] / fw, 4), round(d.box[3] / fh, 4)]}
+                        for d in dets if d.kind in ("life", "fire")]
+            ctx = {"manual": self._force and self._force_manual, "by": self._force_by if (self._force and self._force_manual) else "auto", "detections": det_frac, "onboard_detections": summary, "onboard_life": life_summary, "hazard": self.state.hazard, "survey_id": self.state.survey_id,
                    "radar": self.state.recent_radar_summary(pid)}
             self.worker.submit(frame.copy(), parcel, ctx)
+            if not (self._force and self._force_manual):
+                self._visit_submits += 1      # manual photos don't use up the automatic passes
             self._force = False
-            self._visit_submits += 1
+            self._force_manual = False
             self._last_submit = now
 
         # --- dashboard state ---
@@ -174,7 +191,7 @@ class Pipeline:
         cv2.putText(img, title[:70], (int(20 * sc), int(26 * sc)), font, 0.7 * sc, (255, 255, 255), max(1, int(2 * sc)))
         sub = "awaiting assessment..." if not a else f"{cat}  |  {a.get('damage_percent', 0):.0f}%  |  conf {a.get('confidence', 0):.2f}"
         if a and parcel:
-            est = pricing.estimate(parcel, a)
+            est = pricing.estimate(parcel, a, self.state.hazard)
             if est and est.get("status") == "ok":
                 sub += f"  |  est ${est['range_low']:,} - ${est['range_high']:,}"
         if self.worker.busy:

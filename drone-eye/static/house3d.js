@@ -96,9 +96,10 @@ drive.rotation.x = -Math.PI / 2; drive.position.set(-5.2, 0.01, 4.6); world.add(
 const W = 6, D = 4.5, H = 2.6, T = 0.18;
 const house = new THREE.Group(); world.add(house);
 const wallMat = std('#EFE9DF', { map: sidingTex });
-function wall(w, h, x, z, ry) {   // pivot at the floor so it can 'burn down' (scale.y)
+function wall(w, h, x, z, ry) {   // pivot at the floor: scale.y = 'burn down', rotation.x = 'fall outward'
   const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry;
-  const m = mesh(new THREE.BoxGeometry(w, h, T), wallMat); m.position.y = h / 2; g.add(m); house.add(g); return g;
+  const tilt = new THREE.Group(); g.add(tilt);
+  const m = mesh(new THREE.BoxGeometry(w, h, T), wallMat); m.position.y = h / 2; tilt.add(m); house.add(g); return tilt;
 }
 const wFront = wall(W, H, 0, D / 2, 0), wBack = wall(W, H, 0, -D / 2, 0);
 const wLeft = wall(D, H, -W / 2, 0, Math.PI / 2), wRight = wall(D, H, W / 2, 0, Math.PI / 2);
@@ -127,6 +128,16 @@ function slab(side) {
   house.add(g); return g;
 }
 const roofF = slab(1), roofB = slab(-1);
+const deckMat = std('#C9A77C');            // exposed plywood where shingles blew off
+const tarpMat = std('#2F6FD6', { roughness: 0.6 });
+function patches(slabGroup, side, spots) {
+  const g = new THREE.Group(); slabGroup.children[0].add(g);
+  spots.forEach(([x, z, w, d]) => { const p = mesh(new THREE.BoxGeometry(w, 0.17, d), deckMat, { cast: false }); p.position.set(x, 0.006, z * side); g.add(p); });
+  g.scale.setScalar(0.001); return g;
+}
+const patchF = patches(roofF, 1, [[-1.9, -0.6, 1.1, 0.8], [1.2, 0.5, 1.4, 0.7], [2.6, -0.9, 0.6, 0.5], [-0.4, 0.9, 0.7, 0.5]]);
+const patchB = patches(roofB, -1, [[-1.2, 0.4, 1.3, 0.9], [1.8, -0.5, 0.9, 0.7]]);
+const tarp = mesh(new THREE.BoxGeometry(2.3, 0.2, 1.7), tarpMat, { cast: false }); tarp.position.set(0.6, 0.02, -0.2); roofF.children[0].add(tarp); tarp.scale.setScalar(0.001);
 const gableMat = std('#EFE9DF', { map: sidingTex });
 function gable(x) {
   const s = new THREE.Shape(); s.moveTo(-D / 2, 0); s.lineTo(D / 2, 0); s.lineTo(0, RISE); s.closePath();
@@ -170,7 +181,7 @@ const trees = [];
   [[0, 0.7, 0, 1.0], [0.45, 0.35, 0.2, 0.7], [-0.4, 0.4, -0.2, 0.75]].forEach(([lx, ly, lz, r]) => {
     const l = mesh(new THREE.IcosahedronGeometry(r, 1), leafMat); l.position.set(lx, ly, lz); top.add(l);
   });
-  world.add(g); trees.push({ top, leafMat, trunkMat: trunk.material });
+  world.add(g); trees.push({ g, top, leafMat, trunkMat: trunk.material, s });
 });
 
 // ---------- person marker ----------
@@ -182,6 +193,29 @@ const ringMat = new THREE.MeshBasicMaterial({ color: '#D4F53C', transparent: tru
 const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.6, 40), ringMat); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03; person.add(ring);
 const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), new THREE.MeshBasicMaterial({ color: '#D4F53C' })); beacon.position.y = 1.85; person.add(beacon);
 person.scale.setScalar(0.001);
+
+// ---------- storm: tree on the roof, debris ----------
+const fallen = new THREE.Group(); fallen.position.set(-0.6, RIDGE - 0.35, 1.0); fallen.rotation.set(0.25, 0.5, Math.PI / 2 - 0.25);
+{ const trunk = mesh(new THREE.CylinderGeometry(0.17, 0.26, 6.5, 8), std('#5E4636')); fallen.add(trunk);
+  const leaves = std('#5F8A50');
+  [[0, 3.4, 0, 1.2], [0.5, 2.9, 0.3, 0.9], [-0.5, 3.0, -0.3, 0.9]].forEach(([x, y, z, r]) => { const l = mesh(new THREE.IcosahedronGeometry(r, 1), leaves); l.position.set(x, y, z); fallen.add(l); }); }
+fallen.scale.setScalar(0.001); world.add(fallen);
+const debris = new THREE.Group(); world.add(debris);
+{ const plank = std('#A7896B'), shingle = std('#6F5446');
+  for (let i = 0; i < 18; i++) {
+    const a = Math.random() * Math.PI * 2, r = 4 + Math.random() * 5;
+    const m = mesh(new THREE.BoxGeometry(0.2 + Math.random() * 1.1, 0.06, 0.15 + Math.random() * 0.3), i % 3 ? plank : shingle);
+    m.position.set(Math.cos(a) * r, 0.05, Math.sin(a) * r); m.rotation.y = Math.random() * 3; m.rotation.z = (Math.random() - 0.5) * 0.4; debris.add(m);
+  } }
+debris.scale.setScalar(0.001);
+
+// ---------- flood: water surface + waterline stain ----------
+const waterMat = new THREE.MeshStandardMaterial({ color: '#6E7D74', roughness: 0.25, metalness: 0.15, transparent: true, opacity: 0.8, depthWrite: false });
+const water = new THREE.Mesh(new THREE.CircleGeometry(15, 72), waterMat); water.rotation.x = -Math.PI / 2; water.visible = false; world.add(water);
+const stainMat = new THREE.MeshBasicMaterial({ color: '#5A4733', transparent: true, opacity: 0 });
+const stain = new THREE.Group(); house.add(stain);
+[[0, D / 2 + T / 2 + 0.01, W + 0.05, 0], [0, -D / 2 - T / 2 - 0.01, W + 0.05, 0], [W / 2 + T / 2 + 0.01, 0, D + 0.05, Math.PI / 2], [-W / 2 - T / 2 - 0.01, 0, D + 0.05, Math.PI / 2]]
+  .forEach(([x, z, len, ry]) => { const b = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.09), stainMat); b.position.set(x, 0, z); b.rotation.y = ry; b.material.side = THREE.DoubleSide; stain.add(b); });
 
 // ---------- particles: smoke, flames, embers ----------
 const smokeTex = radialTex('rgba(110,104,98,0.9)', 'rgba(110,104,98,0)');
@@ -208,36 +242,71 @@ const S = {   // current eased values
   wallSoot: 0, roofSoot: 0, garSoot: 0, carSoot: 0, treeBurn: 0, ash: 0,
   smoke: 0, fire: 0, embers: 0, glass: 0.85, person: 0,
   hF: 1, hB: 1, hL: 1, hR: 1, garH: 1,
-  rFy: RIDGE, rFa: ANG, rBy: RIDGE, rBa: -ANG, rFz: 0, rBz: 0, gab: 1, gabR: 1, roofScale: 1, garRoofY: 2.38, garRoofTilt: 0
+  rFy: RIDGE, rFa: ANG, rBy: RIDGE, rBa: -ANG, rFz: 0, rBz: 0, gab: 1, gabR: 1, roofScale: 1, garRoofY: 2.38, garRoofTilt: 0,
+  // storm
+  patchF: 0, patchB: 0, tarp: 0, fallen: 0, debris: 0, lean: 0, treesDown: 0, rFs: 1,
+  tiltF: 0, tiltB: 0, tiltL: 0, tiltR: 0,
+  // flood
+  water: 0, stain: 0, mud: 0
 };
 const TGT = { ...S };
+// Guard: a value the loop doesn't know yet starts from its target instead of becoming NaN
+function syncKeys() { for (const k in TGT) if (!Number.isFinite(S[k])) S[k] = TGT[k]; }
 function setTargets(p) {
-  const w = p.walls, r = p.roof, o = p.overall;
+  const w = p.walls, r = p.roof, o = p.overall, hz = p.hazard || 'wildfire';
+  const fire = hz === 'wildfire';
+  // shared defaults: an intact house, nothing burning, no water, no storm damage
   Object.assign(TGT, {
-    wallSoot: pick([0, 0.25, 0.6, 0.85], w),
-    roofSoot: pick([0, 0.35, 0.75, 0.92], r),
-    garSoot: pick([0, 0.25, 0.65, 0.9], p.garage),
-    carSoot: pick([0, 0.2, 0.7, 0.92], p.car),
-    treeBurn: pick([0, 0.3, 0.75, 1], o),
-    ash: pick([0, 0.25, 0.6, 0.85], o),
+    wallSoot: 0, roofSoot: 0, garSoot: 0, carSoot: 0, treeBurn: 0, ash: 0, smoke: 0, fire: 0, embers: 0,
     glass: pick([0.85, 0.65, 0.0, 0.0], p.windows),
-    hF: pick([1, 1, 1, 0.8], w), hB: pick([1, 1, 0.75, 0.38], w), hL: pick([1, 1, 0.95, 0.62], w), hR: pick([1, 1, 0.82, 0.28], w),
-    garH: pick([1, 1, 0.9, 0.4], p.garage),
-    rFy: pick([RIDGE, RIDGE, RIDGE - 0.9, 0.55], r), rFa: pick([ANG, ANG, 1.15, 0.12], r), rFz: pick([0, 0, 0.2, -1.4], r),
-    rBy: pick([RIDGE, RIDGE, RIDGE - 0.15, 0.75], r), rBa: pick([-ANG, -ANG, -ANG - 0.08, -0.2], r), rBz: pick([0, 0, 0, 1.3], r),
-    roofScale: pick([1, 1, 0.97, 0.72], r),
-    gab: pick([1, 1, 0.7, 0.02], r), gabR: pick([1, 1, 0.25, 0.02], r),
-    garRoofY: pick([2.38, 2.38, 2.0, 0.9], p.garage), garRoofTilt: pick([0, 0, 0.25, 0.5], p.garage),
-    smoke: p.smoke ? (o === 'destroyed' ? 1 : 0.75) : 0,
-    fire: p.fire ? 1 : 0,
-    embers: p.fire ? 1 : (o === 'heavy' ? 0.35 : 0),
+    hF: 1, hB: 1, hL: 1, hR: 1, garH: 1,
+    rFy: RIDGE, rFa: ANG, rFz: 0, rBy: RIDGE, rBa: -ANG, rBz: 0, roofScale: 1, rFs: 1, gab: 1, gabR: 1,
+    garRoofY: 2.38, garRoofTilt: 0,
+    patchF: 0, patchB: 0, tarp: 0, fallen: 0, debris: 0, lean: 0, treesDown: 0, tiltF: 0, tiltB: 0, tiltL: 0, tiltR: 0,
+    water: 0, stain: 0, mud: 0,
     person: p.person ? 1 : 0
   });
+  if (fire) {
+    Object.assign(TGT, {
+      wallSoot: pick([0, 0.25, 0.6, 0.85], w), roofSoot: pick([0, 0.35, 0.75, 0.92], r),
+      garSoot: pick([0, 0.25, 0.65, 0.9], p.garage), carSoot: pick([0, 0.2, 0.7, 0.92], p.car),
+      treeBurn: pick([0, 0.3, 0.75, 1], o), ash: pick([0, 0.25, 0.6, 0.85], o),
+      hF: pick([1, 1, 1, 0.8], w), hB: pick([1, 1, 0.75, 0.38], w), hL: pick([1, 1, 0.95, 0.62], w), hR: pick([1, 1, 0.82, 0.28], w),
+      garH: pick([1, 1, 0.9, 0.4], p.garage),
+      rFy: pick([RIDGE, RIDGE, RIDGE - 0.9, 0.55], r), rFa: pick([ANG, ANG, 1.15, 0.12], r), rFz: pick([0, 0, 0.2, -1.4], r),
+      rBy: pick([RIDGE, RIDGE, RIDGE - 0.15, 0.75], r), rBa: pick([-ANG, -ANG, -ANG - 0.08, -0.2], r), rBz: pick([0, 0, 0, 1.3], r),
+      roofScale: pick([1, 1, 0.97, 0.72], r), gab: pick([1, 1, 0.7, 0.02], r), gabR: pick([1, 1, 0.25, 0.02], r),
+      garRoofY: pick([2.38, 2.38, 2.0, 0.9], p.garage), garRoofTilt: pick([0, 0, 0.25, 0.5], p.garage),
+      smoke: p.smoke ? (o === 'destroyed' ? 1 : 0.75) : 0, fire: p.fire ? 1 : 0,
+      embers: p.fire ? 1 : (o === 'heavy' ? 0.35 : 0)
+    });
+  } else if (hz === 'hurricane') {
+    Object.assign(TGT, {
+      patchF: pick([0, 0.6, 1, 1], r), patchB: pick([0, 0.3, 1, 1], r),
+      tarp: pick([0, 1, 0.9, 0], r),                       // tarp goes on for light/heavy roof damage
+      rFa: pick([ANG, ANG, ANG - 0.55, -0.6], r), rFy: pick([RIDGE, RIDGE, RIDGE + 0.35, RIDGE + 3.5], r),
+      rFz: pick([0, 0, 0.5, 7], r), rFs: pick([1, 1, 1, 0.001], r),     // destroyed: front roof blown away
+      rBa: pick([-ANG, -ANG, -ANG, -ANG + 0.4], r), rBy: pick([RIDGE, RIDGE, RIDGE, RIDGE - 0.7], r),
+      gab: pick([1, 1, 1, 0.5], r), gabR: pick([1, 1, 0.8, 0.02], r),
+      tiltF: pick([0, 0, 0, 0.45], w), tiltR: pick([0, 0, 0.1, 0.65], w), tiltB: pick([0, 0, 0, -0.2], w), tiltL: pick([0, 0, 0, -0.15], w),
+      garRoofY: pick([2.38, 2.38, 2.6, 3.2], p.garage), garRoofTilt: pick([0, 0, 0.3, 0.9], p.garage),
+      fallen: p.treeOnHouse ? 1 : 0,
+      lean: pick([0, 0.08, 0.25, 0.35], o), treesDown: pick([0, 0, 0.5, 1], o),
+      debris: pick([0, 0.4, 0.8, 1], o)
+    });
+  } else if (hz === 'flood') {
+    const depth = Math.max(0, Math.min(6, p.waterM || pick([0, 0.25, 0.9, 2.2], o)));
+    Object.assign(TGT, {
+      water: depth, stain: depth, mud: pick([0, 0.35, 0.7, 0.9], o),
+      tiltR: pick([0, 0, 0, 0.5], w), hR: pick([1, 1, 1, 0.6], w),         // destroyed: a wall washed out
+      debris: pick([0, 0.3, 0.6, 1], o)
+    });
+  }
   renderer.domElement.style.opacity = p.pending ? 0.5 : 1;
 }
 
 // ---------- colors ----------
-const BASE = { wall: C('#EFE9DF'), roof: C('#8C6A55'), gar: C('#E6E0D4'), car: C('#4F79A8'), leaf: C('#6E9B5E'), leafBurnt: C('#5A4632'), chim: C('#9C6B54'), door: C('#6B4F3A'), glass: C('#9EC3D6'), frame: C('#F7F5F0') };
+const BASE = { lawn: C('#C9D4B4'), mud: C('#8A7A62'), wall: C('#EFE9DF'), roof: C('#8C6A55'), gar: C('#E6E0D4'), car: C('#4F79A8'), leaf: C('#6E9B5E'), leafBurnt: C('#5A4632'), chim: C('#9C6B54'), door: C('#6B4F3A'), glass: C('#9EC3D6'), frame: C('#F7F5F0') };
 const tmp = new THREE.Color();
 const mix = (base, k, to = CHAR) => tmp.copy(base).lerp(to, k);
 
@@ -254,13 +323,28 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
   if (!visible) return;
   const k = 1 - Math.exp(-dt * 2.2);
+  syncKeys();
   for (const key in TGT) S[key] += (TGT[key] - S[key]) * k;
 
   // structure
   wFront.scale.y = S.hF; wBack.scale.y = S.hB; wLeft.scale.y = S.hL; wRight.scale.y = S.hR;
   roofF.position.y = S.rFy; roofF.rotation.x = S.rFa; roofF.position.z = S.rFz;
   roofB.position.y = S.rBy; roofB.rotation.x = S.rBa; roofB.position.z = S.rBz;
-  roofF.scale.setScalar(S.roofScale); roofB.scale.setScalar(S.roofScale);
+  roofF.scale.setScalar(Math.max(0.001, S.roofScale * S.rFs)); roofB.scale.setScalar(S.roofScale);
+  wFront.rotation.x = S.tiltF; wBack.rotation.x = S.tiltB; wLeft.rotation.x = S.tiltL; wRight.rotation.x = S.tiltR;
+  patchF.scale.setScalar(Math.max(0.001, S.patchF)); patchB.scale.setScalar(Math.max(0.001, S.patchB));
+  tarp.scale.setScalar(Math.max(0.001, S.tarp));
+  fallen.scale.setScalar(Math.max(0.001, S.fallen)); debris.scale.setScalar(Math.max(0.001, S.debris));
+  trees.forEach((tr, i) => {
+    const down = i < 2 ? S.treesDown : 0;                 // two trees can be blown over
+    tr.g.rotation.z = (i % 2 ? -1 : 1) * (S.lean + down * 1.15) + Math.sin(t * 2.2 + i) * S.lean * 0.15;
+  });
+  // flood
+  water.visible = S.water > 0.02;
+  water.position.y = S.water + Math.sin(t * 1.3) * 0.02;
+  stain.position.y = S.stain; stainMat.opacity = Math.min(0.8, S.stain * 2);
+  car.position.y = Math.max(0, S.water - 0.7) * 0.55; car.rotation.z = Math.max(0, S.water - 0.9) * 0.12 * Math.sin(t * 0.9);
+  lawn.material.color.copy(BASE.lawn).lerp(BASE.mud, S.mud);
   gabL.scale.y = S.gab; gabR.scale.y = S.gabR;
   garBody.scale.y = S.garH; garRoof.position.y = S.garRoofY; garRoof.rotation.z = S.garRoofTilt;
 
@@ -315,6 +399,7 @@ requestAnimationFrame(frame);
 
 window.house3d = {
   update: setTargets,
+  debug: () => ({ S: { ...S }, TGT: { ...TGT } }),
   setVisible(v) { visible = v; if (v) resize(); },
 };
 window.dispatchEvent(new Event('house3d-ready'));

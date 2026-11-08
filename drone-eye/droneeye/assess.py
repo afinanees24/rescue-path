@@ -54,26 +54,55 @@ ASSESS_TOOL = {
             "adjuster_summary": {"type": "string", "description": "2-4 sentence summary in an adjuster's voice."},
             "recommended_actions": {"type": "array", "items": {"type": "string"}},
             "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "water_depth_ft": {"type": "number", "minimum": 0, "maximum": 30,
+                               "description": "Flood only: how high the water reached above ground at the house, in feet."},
+            "roof_covering_missing_percent": {"type": "number", "minimum": 0, "maximum": 100,
+                                              "description": "Wind only: share of roof covering (shingles/tiles) missing."},
+            "tree_on_structure": {"type": "boolean", "description": "A fallen tree is lying on the house or garage."},
+            "damage_regions": {
+                "type": "array", "maxItems": 6,
+                "description": "Where the damage is in the image: one box per damaged part you can see.",
+                "items": {"type": "object", "properties": {
+                    "part": {"type": "string", "enum": COMPONENTS + ["other"]},
+                    "severity": {"type": "string", "enum": ["minor", "moderate", "severe", "destroyed"]},
+                    "box": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4,
+                            "description": "[x_min, y_min, x_max, y_max] as fractions of image width/height, 0 to 1, top-left is 0,0"},
+                    "note": {"type": "string", "description": "3-6 words, e.g. 'roof collapsed over garage'"}},
+                    "required": ["part", "severity", "box"]}},
         },
         "required": ["structure_visible", "damage_category", "damage_percent", "active_fire", "smoke_present",
                      "components", "hazards", "signs_of_life", "adjuster_summary", "recommended_actions", "confidence"],
     },
 }
 
-SYSTEM = """You are the vision system on a disaster-response drone surveying homes after a wildfire.
+BASE_SYSTEM = """You are the vision system on a disaster-response drone surveying homes after a disaster.
 You assist property insurance adjusters (first-pass triage, not a final determination) and flag any sign of
 people or animals for rescue teams.
 
 Rules:
-- Assess the PRIMARY structure: the building nearest the center of the frame.
-- Use CAL FIRE DINS categories: No Damage; Affected (1-9%); Minor (10-25%); Major (26-50%); Destroyed (>50%).
-  Use "Unknown" if no building is clearly visible.
+- Assess the PRIMARY structure: the building nearest the center of the frame. If no building is centered,
+  assess the most damaged (or burning) building you can see anywhere in the frame instead.
+- Use these damage categories: No Damage; Affected (1-9%); Minor (10-25%); Major (26-50%); Destroyed (>50%).
+  Use "Unknown" ONLY if no part of any building is visible at all. Smoke, flames or trees partly hiding a house
+  is not a reason for Unknown: rate what you can see and lower your confidence instead.
+  A house with flames coming through the roof or walls is at least Major.
 - Rate EVERY component you can see, even partly (a photo of a house on a phone or screen counts).
-  Use not_visible only when that part is completely out of frame. Burned or charred = severe; collapsed or missing = destroyed.
+  Use not_visible only when that part is completely out of frame.
 - Keep every text field short (adjuster_summary under 40 words) so the JSON is complete.
-- The feed may be a demo: a camera pointed at a printed photo or a screen. Assess the scene depicted, ignore
-  screen bezels, glare, or hands.
-- Signs of life matter most: report any person, animal, or movement, even partial or uncertain."""
+- The feed may be a demo: a camera pointed at a printed photo or a screen, or a screen-share of the drone's
+  phone app. Assess the scene depicted. Ignore screen bezels, glare, hands and any app overlay: buttons, icons,
+  compass, maps, telemetry numbers, warnings like "No GPS", record buttons and black bars.
+- Signs of life matter most: report any person, animal, or movement, even partial or uncertain.
+- damage_regions: for each damaged part you can see (up to 6), give a box [x_min, y_min, x_max, y_max]
+  as fractions of the image (0 to 1, top-left is 0,0) and a 3-6 word note. Boxes help the adjuster find the damage."""
+
+
+def build_system(hazard: str | None) -> str:
+    from .hazards import get
+    return BASE_SYSTEM + "\n\n" + get(hazard)["prompt"]
+
+
+SYSTEM = build_system("wildfire")  # kept for anything importing the old name
 
 
 def _downscale(frame: np.ndarray, max_side=1024) -> np.ndarray:
@@ -92,6 +121,9 @@ def _context_text(parcel, context) -> str:
                      f"roof: {parcel.get('roof_type')}, construction: {parcel.get('construction')}).")
     else:
         lines.append("No parcel on file for this location.")
+    if context.get("hazard"):
+        from .hazards import get
+        lines.append(f"Disaster type: {get(context['hazard'])['label']}.")
     if context.get("onboard_detections"):
         lines.append(f"Onboard detector currently sees: {context['onboard_detections']}.")
     if context.get("radar"):
@@ -132,7 +164,7 @@ class ClaudeAssessor:
         msg = self.client.messages.create(
             model=self.model,
             max_tokens=1200,
-            system=SYSTEM,
+            system=build_system(context.get("hazard")),
             tools=[ASSESS_TOOL],
             tool_choice={"type": "tool", "name": ASSESS_TOOL["name"]},
             messages=[{"role": "user", "content": [
@@ -166,7 +198,7 @@ class GeminiAssessor:
                       _context_text(parcel, context).replace("Record your assessment with the tool.",
                                                               "Return your assessment as JSON.")],
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM,
+                system_instruction=build_system(context.get("hazard")),
                 response_mime_type="application/json",
                 response_json_schema=ASSESS_TOOL["input_schema"],
                 temperature=0.2,
@@ -264,8 +296,21 @@ def _severity(v) -> str:
     t = str(v or "").lower().replace("_", " ").strip()
     if not t or any(w in t for w in ("not visible", "unknown", "n/a", "unclear", "cannot see", "can't see", "obscured", "out of frame")):
         return "not_visible"
-    if t in ("none", "no", "ok", "fine", "good") or any(w in t for w in ("no damage", "undamaged", "intact", "no visible damage")):
+    if t in ("none", "no", "ok", "fine", "good", "dry") or any(w in t for w in ("no damage", "undamaged", "intact", "no visible damage")):
         return "none"
+    # storm / flood wording, checked before the generic words so 'a few shingles missing' isn't read as 'destroyed'
+    if "missing" in t and any(w in t for w in ("few", "some", "several", "patch", "scattered")):
+        return "minor" if any(w in t for w in ("few", "scattered")) else "moderate"
+    if any(w in t for w in ("submerged", "under water", "underwater", "flooded", "swept", "washed")):
+        return "destroyed" if any(w in t for w in ("swept", "washed away", "washed out")) else "severe"
+    if any(w in t for w in ("torn off", "ripped off", "blown off", "uprooted", "fallen", "tree on", "trees down", "blown over", "snapped")):
+        return "severe"
+    if "branch" in t:
+        return "minor"
+    if any(w in t for w in ("soaked", "water damage", "torn", "leaning", "dented", "pushed in")):
+        return "moderate"
+    if any(w in t for w in ("wet", "damp", "stain", "waterline", "tarp", "debris")):
+        return "minor"
     if any(w in t for w in ("destroy", "gone", "missing", "total", "complete", "fully collapsed", "burned down", "burnt down")):
         return "destroyed"
     if "collapse" in t and not any(w in t for w in ("partial", "partly", "sag")):
@@ -342,11 +387,64 @@ def normalize(r: dict) -> dict:
         "adjuster_summary": str(r.get("adjuster_summary", "")),
         "recommended_actions": as_list(r.get("recommended_actions")),
         "confidence": max(0.0, min(1.0, conf if conf <= 1 else conf / 100)),
+        "water_depth_ft": _num(r.get("water_depth_ft"), 0, 30),
+        "roof_covering_missing_percent": _num(r.get("roof_covering_missing_percent"), 0, 100),
+        "tree_on_structure": bool(r.get("tree_on_structure", False)),
+        "_raw_regions": r.get("damage_regions") or r.get("regions") or r.get("damage_boxes") or [],
     }
 
 
+def regions_to_fractions(raw, img_w: int, img_h: int) -> list:
+    """Accept boxes as 0-1 fractions, 0-100 percent, 0-1000 (common for vision models) or pixels of the sent image."""
+    out = []
+    if not isinstance(raw, list):
+        return out
+    for r in raw[:8]:
+        if not isinstance(r, dict):
+            continue
+        box = next((r[k] for k in ("box", "bbox", "bounding_box", "box_2d", "coordinates") if k in r), None)
+        if isinstance(box, dict):
+            box = [box.get(k) for k in ("x_min", "y_min", "x_max", "y_max")]
+        try:
+            x1, y1, x2, y2 = [float(v) for v in box][:4]
+        except (TypeError, ValueError):
+            continue
+        m = max(x1, y1, x2, y2)
+        if m <= 1.0:
+            sx, sy = 1.0, 1.0
+        elif m <= 100 and max(img_w, img_h) > 100 and m < 100.5:
+            sx = sy = 100.0
+        elif max(x1, x2) > img_w * 1.02 or max(y1, y2) > img_h * 1.02:
+            sx = sy = 1000.0          # doesn't fit as pixels of the sent image: it's the 0-1000 scale
+        else:
+            sx, sy = float(img_w), float(img_h)
+        x1, x2 = sorted((x1 / sx, x2 / sx)); y1, y2 = sorted((y1 / sy, y2 / sy))
+        x1, y1, x2, y2 = [max(0.0, min(1.0, v)) for v in (x1, y1, x2, y2)]
+        if x2 - x1 < 0.01 or y2 - y1 < 0.01:
+            continue
+        part = str(r.get("part") or r.get("label") or r.get("name") or "other").lower()
+        part = part if part in COMPONENTS else next((c for sub, c in _COMP_KEYS if sub in part), "other")
+        sev = _severity(r.get("severity") or r.get("damage") or r.get("level") or "moderate")
+        sev = sev if sev in ("minor", "moderate", "severe", "destroyed") else "moderate"
+        out.append({"part": part, "severity": sev, "box": [round(v, 4) for v in (x1, y1, x2, y2)],
+                    "note": str(r.get("note") or r.get("description") or "")[:60]})
+    return out
+
+
+def _num(v, lo, hi):
+    """Number from the model, tolerating '3 ft', '40%', None."""
+    if v is None:
+        return None
+    try:
+        import re
+        x = float(re.findall(r"-?\d+(?:\.\d+)?", str(v))[0]) if isinstance(v, str) else float(v)
+        return max(lo, min(hi, x))
+    except (IndexError, TypeError, ValueError):
+        return None
+
+
 class NemotronAssessor:
-    """NVIDIA Nemotron Nano VL through NVIDIA's hosted API (build.nvidia.com, OpenAI-compatible).
+    """NVIDIA Nemotron 3.5 Super VL through NVIDIA's hosted API (build.nvidia.com, OpenAI-compatible).
     Point NVIDIA_BASE_URL at a local NIM container instead to run it on your own GPU."""
 
     def __init__(self, model: str):
@@ -358,7 +456,8 @@ class NemotronAssessor:
         self.model = model
         self.name = f"nemotron:{model.split('/')[-1]}"
         self.schema_txt = json.dumps(ASSESS_TOOL["input_schema"])
-        self.guided = True       # NIM structured output; switched off automatically if the endpoint rejects it
+        self.guided = False      # legacy nvext.guided_json; response_format below is the documented way
+        self.schema_fmt = True   # response_format json_schema; switched off automatically if the endpoint rejects it
         self.thinking_kw = True  # chat_template_kwargs.enable_thinking=False; same auto-fallback
 
     def assess(self, frame, parcel, context) -> dict:
@@ -371,7 +470,7 @@ class NemotronAssessor:
             "model": self.model,
             "messages": [
                 # '/no_think' turns off Nemotron's reasoning trace so the token budget goes to the answer
-                {"role": "system", "content": "/no_think\n" + SYSTEM},
+                {"role": "system", "content": "/no_think\n" + build_system(context.get("hazard"))},
                 {"role": "user", "content": [
                     {"type": "text", "text": prompt},
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{jpeg_b64(frame)}"}},
@@ -380,11 +479,15 @@ class NemotronAssessor:
             "max_tokens": 4096,
             "temperature": 0.2,
         }
+        # Optional extras, dropped from the END of this list one at a time if the endpoint rejects them.
         optional = []
-        if self.guided:
-            optional.append(("nvext", {"guided_json": ASSESS_TOOL["input_schema"]}))
         if self.thinking_kw:
             optional.append(("chat_template_kwargs", {"enable_thinking": False}))
+        if self.schema_fmt:   # NVIDIA NIM docs: json_schema keeps required fields (json_object may return {})
+            optional.append(("response_format", {"type": "json_schema", "json_schema": {
+                "name": "damage_assessment", "schema": ASSESS_TOOL["input_schema"]}}))
+        if self.guided:
+            optional.append(("nvext", {"guided_json": ASSESS_TOOL["input_schema"]}))
         for k, v in optional:
             body[k] = v
         headers = {"Authorization": f"Bearer {self.key}", "Accept": "application/json"}
@@ -395,6 +498,8 @@ class NemotronAssessor:
             body.pop(k, None)
             if k == "nvext":
                 self.guided = False
+            elif k == "response_format":
+                self.schema_fmt = False
             else:
                 self.thinking_kw = False
             r = httpx.post(self.url, headers=headers, json=body, timeout=120)
@@ -452,10 +557,13 @@ class AssessmentWorker:
         self.calls = 0
         self.last_raw = None
         self.last_result = None
+        self.last_frame = None
         threading.Thread(target=self._loop, daemon=True).start()
 
     def submit(self, frame, parcel, context):
         with self._cv:
+            if self._pending is not None and self._pending[2].get("manual") and not context.get("manual"):
+                return   # never let an automatic pass overwrite a photo the user asked for
             self._pending = (frame, parcel, context, time.time())
             self._cv.notify()
 
@@ -468,8 +576,11 @@ class AssessmentWorker:
                 self._pending = None
                 self.busy = True
             engine = self.primary or self.fallback
+            self.last_frame = frame          # exactly what the AI is about to see (for /api/debug/ai/frame.jpg)
             try:
                 result = normalize(engine.assess(frame, parcel, context))
+                sent = _downscale(frame)
+                result["damage_regions"] = regions_to_fractions(result.pop("_raw_regions", []), sent.shape[1], sent.shape[0])
                 self.last_error = None
             except Exception as e:
                 traceback.print_exc()
@@ -477,7 +588,13 @@ class AssessmentWorker:
                 engine = self.fallback
                 result = self.fallback.assess(frame, parcel, context)
             self.calls += 1
+            result.pop("_raw_regions", None)
+            result.setdefault("damage_regions", [])
+            result["_detections"] = context.get("detections", [])   # people / fire boxes from the same frame
             result["_engine"] = engine.name
+            result["_survey"] = context.get("survey_id")
+            result["_manual"] = bool(context.get("manual"))
+            result["_by"] = context.get("by") or ("you" if context.get("manual") else "auto")
             result["_latency_s"] = round(time.time() - t0, 2)
             result["_timestamp"] = time.time()
             self.last_raw = getattr(engine, "last_raw", None)
@@ -487,6 +604,9 @@ class AssessmentWorker:
             where = parcel["address"].split(",")[0] if parcel else "no parcel"
             print(f"[ai] {where}: {result.get('damage_category')} {result.get('damage_percent', 0):.0f}% | {seen} "
                   f"| fire={result.get('active_fire')} | {engine.name.split(':')[0]} {result['_latency_s']}s")
+            if str(result.get("damage_category", "")).startswith("Unknown"):
+                why = " ".join(str(result.get("adjuster_summary") or "no reason given").split())[:160]
+                print(f"     why Unknown: {why}  (see the frame: /api/debug/ai/frame.jpg)")
             self.busy = False
             try:
                 self.on_result(parcel["parcel_id"] if parcel else None, result, frame)
