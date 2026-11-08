@@ -1,8 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Fake people. Produces frames in the same shape as the ESP32 JSON:
-/// like the LD2410B, it only knows distance, and only for people inside the cone.
+/// Fake people in the demo house, for the SIM target source.
 final class RadarSimulator {
     private enum Motion {
         case still(anchor: CGPoint)
@@ -46,24 +45,13 @@ final class RadarSimulator {
         people = list
     }
 
-    /// Demo scenario relative to where the firefighter stands and faces: a still person
-    /// roughly ahead at ~3 m, a moving person drifting between 1.5 and 5 m slightly off
-    /// centre, and (for count 3) someone wandering in the living room.
-    func seedAhead(origin: CGPoint, heading: Double, plan: FloorPlan, count: Int = 2) {
-        let stillSpot = origin.moved(bearing: heading + Double.random(in: -8...8),
-                                     distance: Double.random(in: 2.8...3.2))
-        var list = [Person(id: 0, position: stillSpot, motion: .still(anchor: stillSpot))]
-        if count >= 2 {
-            let side: Double = Bool.random() ? 1 : -1
-            let motion = Motion.radial(origin: origin, bearing: heading + side * Double.random(in: 10...18),
-                                       near: 1.5, far: 5.0, period: Double.random(in: 12...16),
-                                       phase: Double.random(in: 0..<(2 * .pi)))
-            list.append(Person(id: 1, position: origin, motion: motion))
-        }
-        if count >= 3, let living = plan.room(named: "Living") {
-            list.append(wanderer(id: 2, in: living.rect.insetBy(dx: 0.5, dy: 0.5)))
-        }
-        people = list
+    /// The hidden person for UWB-style simulation: one person roughly along `heading`,
+    /// walking slowly toward and away from the firefighter between 0.8 and 5 m.
+    func seedBeacon(origin: CGPoint, heading: Double) {
+        let motion = Motion.radial(origin: origin, bearing: heading, near: 0.8, far: 5.0,
+                                   period: Double.random(in: 18...24),
+                                   phase: Double.random(in: 0..<(2 * .pi)))
+        people = [Person(id: 0, position: origin, motion: motion)]
         step(dt: 0)
     }
 
@@ -102,27 +90,10 @@ final class RadarSimulator {
         }
     }
 
-    /// Nearest moving person and nearest still person inside the cone, with sensor jitter.
-    func measure(from origin: CGPoint, heading: Double, plan: FloorPlan,
-                 halfAngle: Double, range: Double) -> RadarFrame {
-        var nearest: [Bool: (dist: Double, walls: Int)] = [:]
-        for p in people {
-            let d = origin.distance(to: p.position)
-            guard d <= range, d > 0.2 else { continue }
-            let b = Compass.bearing(from: origin, to: p.position)
-            guard abs(Compass.delta(b, heading)) <= halfAngle else { continue }
-            if let current = nearest[p.isStill], current.dist <= d { continue }
-            nearest[p.isStill] = (d, plan.wallsCrossed(from: origin, to: p.position))
-        }
-
-        func target(still: Bool) -> RadarTarget {
-            guard let hit = nearest[still] else { return RadarTarget() }
-            let dist = max(0.3, hit.dist + Double.random(in: -0.12...0.12))
-            let base = still ? 75.0 : 95.0
-            let energy = base - dist * 8 - Double(hit.walls) * 9 + Double.random(in: -6...6)
-            return RadarTarget(dist: Int((dist * 100).rounded()),
-                               energy: Int(min(100, max(5, energy))))
-        }
-        return RadarFrame(moving: target(still: false), still: target(still: true))
+    /// Distance and world bearing to the nearest person.
+    func nearest(from origin: CGPoint) -> (distance: Double, bearing: Double)? {
+        people
+            .map { (distance: origin.distance(to: $0.position), bearing: Compass.bearing(from: origin, to: $0.position)) }
+            .min { $0.distance < $1.distance }
     }
 }

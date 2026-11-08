@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Bottom sheet: current detections, alert log, settings.
+/// Lower half of the MAP view: current target, the rule-change log, settings.
 struct DetectionSheet: View {
     @Bindable var store: RadarStore
 
@@ -13,10 +13,8 @@ struct DetectionSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                TimelineView(.periodic(from: .now, by: 1)) { timeline in
-                    detections(now: timeline.date)
-                }
-                alertLog
+                targetSection
+                ruleLog
                 settings
             }
             .padding(.horizontal, 16)
@@ -26,55 +24,60 @@ struct DetectionSheet: View {
         .scrollIndicators(.hidden)
     }
 
-    // MARK: Detections
+    // MARK: Target
 
-    private func detections(now: Date) -> some View {
-        let visible = TargetKind.allCases
-            .compactMap { store.detections[$0] }
-            .filter { now.timeIntervalSince($0.lastSeen) < RadarStore.blipLifetime }
-        return VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "DETECTIONS")
-            if visible.isEmpty {
-                Text("No one detected. Sweep the cone slowly across each room.")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.dim)
+    private var targetSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "TARGET · \(store.sourceKind.label)")
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(store.fix.distance == nil ? Theme.faint : Theme.cyan)
+                    .frame(width: 3)
+                VStack(alignment: .leading, spacing: 3) {
+                    tacText(store.guidance.rule.cue, 16, .bold)
+                        .foregroundStyle(store.guidance.rule == .stop ? Theme.red : Theme.cyan)
+                    tacText(bearingText, 12).foregroundStyle(Theme.dim)
+                }
+                Spacer(minLength: 8)
+                Text(store.fix.distance.map { String(format: "%.1fm", $0) } ?? "--")
+                    .font(Theme.mono(30, .medium))
+                    .foregroundStyle(store.fix.distance == nil ? Theme.dim : Theme.ink)
             }
-            ForEach(visible) { d in
-                DetectionRow(detection: d, now: now)
-            }
+            .padding(12)
+            .frame(minHeight: 64)
+            .overlay(Rectangle().stroke(Theme.faint, lineWidth: 1))
         }
     }
 
-    // MARK: Alert log
+    private var bearingText: String {
+        if !store.providesBearing { return "BRG N/A (RADAR)" }
+        guard let b = store.fix.bearing else { return "BRG -- (SWEEP)" }
+        return String(format: "BRG %+.0f°", b)
+    }
 
-    private var alertLog: some View {
+    // MARK: Rule log
+
+    private var ruleLog: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                SectionHeader(title: "ALERT LOG")
+                SectionHeader(title: "RULE LOG")
                 Spacer()
-                if !store.alerts.isEmpty {
-                    Button("Clear") { store.clearAlerts() }
-                        .font(Theme.mono(14, .bold))
+                if !store.guidance.log.isEmpty {
+                    Button("[CLEAR]") { store.guidance.clearLog() }
+                        .font(Theme.mono(13, .bold))
                         .foregroundStyle(Theme.dim)
                         .frame(minHeight: 44)
                 }
             }
-            if store.alerts.isEmpty {
-                Text("No alerts yet.")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Theme.dim)
+            if store.guidance.log.isEmpty {
+                tacText("NO RULE CHANGES YET", 11).foregroundStyle(Theme.dim)
             }
-            ForEach(store.alerts.prefix(50)) { a in
+            ForEach(store.guidance.log.prefix(50)) { e in
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(Self.timeFormatter.string(from: a.time))
-                        .font(Theme.mono(13, .semibold))
-                        .foregroundStyle(Theme.dim)
-                    Circle()
-                        .fill(Theme.color(for: a.kind))
-                        .frame(width: 9, height: 9)
-                    Text(a.text)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.text)
+                    tacText(Self.timeFormatter.string(from: e.time), 11).foregroundStyle(Theme.dim)
+                    tacText("R\(e.rule.rawValue) \(e.rule.cue)", 12, .bold)
+                        .foregroundStyle(e.rule == .stop ? Theme.red : Theme.ink)
+                    tacText(e.detail, 11).foregroundStyle(Theme.dim)
                 }
             }
         }
@@ -86,80 +89,37 @@ struct DetectionSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "SETTINGS")
 
-            Picker("Data source", selection: Binding(get: { store.mode }, set: { store.setMode($0) })) {
-                ForEach(DataMode.allCases) { mode in
-                    Text(mode.badge).tag(mode)
+            Picker("Target source", selection: Binding(get: { store.sourceKind }, set: { store.setSource($0) })) {
+                ForEach(SourceKind.allCases) { kind in
+                    Text(kind.label).tag(kind)
                 }
             }
             .pickerStyle(.segmented)
 
-            if store.mode == .live {
-                Text("Looking for \"\(BLERadarClient.deviceName)\" · \(store.ble.state.label)")
-                    .font(Theme.mono(13, .semibold))
-                    .foregroundStyle(Theme.dim)
+            Toggle(isOn: $store.showTruth) {
+                tacText("SHOW SIMULATED PERSON", 12).foregroundStyle(Theme.ink)
             }
+            .tint(Theme.cyan)
+            .disabled(store.sourceKind != .sim)
+            .frame(minHeight: 44)
 
-            Toggle("Show simulated people", isOn: $store.showTruth)
-                .font(.system(size: 16, weight: .semibold))
-                .tint(Theme.radar)
-                .disabled(store.mode != .simulated)
-                .frame(minHeight: 44)
-
-            SettingButton(title: "Align map to the way I'm facing", systemImage: "location.north.line") {
+            SettingButton(title: "ALIGN MAP TO MY FACING", systemImage: "location.north.line") {
                 store.alignMapToFacing()
             }
             .disabled(!store.compass.hasReading)
 
-            SettingButton(title: "Clear scan blips", systemImage: "trash") {
+            SettingButton(title: "CLEAR SCAN DOTS", systemImage: "trash") {
                 store.clearBlips()
             }
 
-            SettingButton(title: "New simulated scenario", systemImage: "shuffle") {
+            SettingButton(title: "NEW SIMULATED PERSON", systemImage: "shuffle") {
                 store.newScenario()
             }
-            .disabled(store.mode != .simulated)
+            .disabled(store.sourceKind != .sim)
 
-            Text("Drag the blue marker to move. Twist two fingers on the map, or use the rotate buttons, to set heading by hand.")
-                .font(.footnote)
+            tacText("DRAG THE MARKER TO MOVE. TWIST TWO FINGERS ON THE MAP, OR USE THE ROTATE BUTTONS, TO SET HEADING BY HAND.", 10)
                 .foregroundStyle(Theme.dim)
         }
-    }
-}
-
-struct DetectionRow: View {
-    let detection: Detection
-    let now: Date
-
-    var body: some View {
-        let color = Theme.color(for: detection.kind)
-        let age = max(0, now.timeIntervalSince(detection.lastSeen))
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(color)
-                .frame(width: 6)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(detection.kind.title)
-                    .font(Theme.mono(18, .heavy))
-                    .foregroundStyle(color)
-                if detection.kind == .still {
-                    Text("POSSIBLY UNCONSCIOUS")
-                        .font(Theme.mono(12, .heavy))
-                        .foregroundStyle(Theme.still)
-                }
-                Text("BRG \(Compass.label(detection.bearing)) · \(age < 1.5 ? "now" : "\(Int(age)) s ago")")
-                    .font(Theme.mono(13, .semibold))
-                    .foregroundStyle(Theme.dim)
-            }
-            Spacer(minLength: 8)
-            Text(String(format: "%.1f m", detection.distance))
-                .font(Theme.mono(32, .heavy))
-                .foregroundStyle(Theme.text)
-        }
-        .padding(12)
-        .frame(minHeight: 64)
-        .background(Theme.panelRaised, in: RoundedRectangle(cornerRadius: 12))
-        .opacity(age > 2 ? 0.5 : 1)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -167,10 +127,7 @@ struct SectionHeader: View {
     let title: String
 
     var body: some View {
-        Text(title)
-            .font(Theme.mono(13, .heavy))
-            .tracking(1.5)
-            .foregroundStyle(Theme.dim)
+        tacText(title, 11, .bold).foregroundStyle(Theme.dim)
     }
 }
 
@@ -181,13 +138,16 @@ struct SettingButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
-                .padding(.horizontal, 14)
-                .background(Theme.panelRaised, in: RoundedRectangle(cornerRadius: 12))
+            HStack(spacing: 10) {
+                Image(systemName: systemImage).font(.system(size: 14, weight: .semibold))
+                tacText(title, 12, .bold)
+            }
+            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .padding(.horizontal, 14)
+            .overlay(Rectangle().stroke(Theme.faint, lineWidth: 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Theme.text)
+        .foregroundStyle(Theme.ink)
     }
 }

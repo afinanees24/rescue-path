@@ -26,10 +26,6 @@ enum Theme {
     static let sim = ink
     static let live = cyan
 
-    static func color(for kind: TargetKind) -> Color {
-        kind == .still ? red : cyan
-    }
-
     static func mono(_ size: CGFloat, _ weight: Font.Weight = .bold) -> Font {
         .system(size: size, weight: weight, design: .monospaced)
     }

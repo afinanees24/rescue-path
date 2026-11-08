@@ -35,8 +35,8 @@ struct RadarSnapshot {
     let plan: FloorPlan
     let firefighter: CGPoint
     let heading: Double
-    let moving: TrackDisplay
-    let still: TrackDisplay
+    let target: TargetDisplay
+    let providesBearing: Bool
     let blips: [Blip]
     let truth: [SimPerson]
     let showTruth: Bool
@@ -74,9 +74,9 @@ struct RadarMapView: View {
 
     private func snapshot() -> RadarSnapshot {
         RadarSnapshot(plan: store.plan, firefighter: store.firefighter, heading: store.displayHeading,
-                      moving: store.moving, still: store.still, blips: store.blips,
-                      truth: store.mode == .simulated ? store.simTruth : [],
-                      showTruth: store.showTruth && store.mode == .simulated,
+                      target: store.target, providesBearing: store.providesBearing, blips: store.blips,
+                      truth: store.sourceKind == .sim ? store.simTruth : [],
+                      showTruth: store.showTruth && store.sourceKind == .sim,
                       range: RadarStore.range, halfAngle: RadarStore.halfAngle)
     }
 
@@ -112,12 +112,12 @@ struct RadarMapView: View {
             .foregroundStyle(.black)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(Theme.still, in: Capsule())
+            .background(Theme.cyan, in: Capsule())
             .allowsHitTesting(false)
     }
 }
 
-/// Draws one frame: floor plan, scan blips, radar cone + sweep, reading bands, firefighter.
+/// Draws one frame: floor plan, scan blips, radar cone + sweep, target, firefighter.
 struct RadarRenderer {
     let s: RadarSnapshot
     let xf: MapTransform
@@ -137,8 +137,7 @@ struct RadarRenderer {
         drawBlips(ctx)
         drawCone(ctx)
         drawSweep(ctx)
-        drawBand(ctx, s.moving, .moving, labelOutside: false)
-        drawBand(ctx, s.still, .still, labelOutside: true)
+        drawTarget(ctx)
         drawFirefighter(ctx)
     }
 
@@ -209,11 +208,11 @@ struct RadarRenderer {
         ctx.drawLayer { layer in
             layer.addFilter(.blur(radius: 6))
             for b in s.blips {
-                layer.fill(dot(b, r * 1.8), with: .color(Theme.color(for: b.kind).opacity(0.7 * alpha(b))))
+                layer.fill(dot(b, r * 1.8), with: .color(Theme.cyan.opacity(0.7 * alpha(b))))
             }
         }
         for b in s.blips {
-            ctx.fill(dot(b, r), with: .color(Theme.color(for: b.kind).opacity(alpha(b))))
+            ctx.fill(dot(b, r), with: .color(Theme.cyan.opacity(alpha(b))))
         }
     }
 
@@ -267,30 +266,39 @@ struct RadarRenderer {
         ctx.stroke(line, with: .color(Theme.radar.opacity(0.9)), lineWidth: 2)
     }
 
-    // MARK: Reading bands
+    // MARK: Target
 
-    private func drawBand(_ ctx: GraphicsContext, _ t: TrackDisplay, _ kind: TargetKind, labelOutside: Bool) {
+    /// A dot where the target is when there's a bearing; a range band across the cone
+    /// when there isn't (radar, or UWB direction lost).
+    private func drawTarget(_ ctx: GraphicsContext) {
+        let t = s.target
         guard t.visibility > 0.02 else { return }
         let c = center
         let r = xf.length(min(max(t.distance, 0.2), s.range))
-        let arc = arcPath(c, r, lo, hi)
-        let color = Theme.color(for: kind)
-        let pulse = kind == .still ? 0.65 + 0.35 * (0.5 + 0.5 * sin(time * 5)) : 1.0
-        let width = max(10, xf.length(0.35))
-
-        ctx.drawLayer { layer in
-            layer.addFilter(.blur(radius: 10))
-            layer.stroke(arc, with: .color(color.opacity(t.visibility * pulse)),
-                         style: StrokeStyle(lineWidth: width * 2, lineCap: .round))
+        let ringAlpha = s.providesBearing ? t.visibility * (1 - t.bearingVisibility) : t.visibility
+        if ringAlpha > 0.02 {
+            let arc = arcPath(c, r, lo, hi)
+            let width = max(8, xf.length(0.3))
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: 8))
+                layer.stroke(arc, with: .color(Theme.cyan.opacity(ringAlpha)),
+                             style: StrokeStyle(lineWidth: width * 2, lineCap: .round))
+            }
+            ctx.stroke(arc, with: .color(Theme.cyan.opacity(0.8 * ringAlpha)),
+                       style: StrokeStyle(lineWidth: width, lineCap: .round))
         }
-        ctx.stroke(arc, with: .color(color.opacity(0.85 * t.visibility * pulse)),
-                   style: StrokeStyle(lineWidth: width, lineCap: .round))
-        ctx.stroke(arc, with: .color(Color.white.opacity(0.8 * t.visibility)), lineWidth: 1.5)
-
-        let meters = String(format: "%.1f", t.distance)
-        let text = kind == .still ? "STILL \(meters) m · POSSIBLY UNCONSCIOUS" : "MOVING \(meters) m"
-        let labelRadius = labelOutside ? r + width + 16 : max(24, r - width - 16)
-        drawLabel(ctx, text, at: point(c, labelRadius, s.heading), color: color, alpha: t.visibility)
+        let dotAlpha = s.providesBearing ? t.visibility * t.bearingVisibility : 0
+        if dotAlpha > 0.02 {
+            let p = point(c, xf.length(t.distance), s.heading + t.bearing)
+            let dot = Path(ellipseIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18))
+            ctx.drawLayer { layer in
+                layer.addFilter(.blur(radius: 6))
+                layer.fill(dot, with: .color(Theme.cyan.opacity(dotAlpha)))
+            }
+            ctx.stroke(dot, with: .color(Theme.cyan.opacity(dotAlpha)), lineWidth: 2)
+        }
+        drawLabel(ctx, String(format: "TARGET %.1f m", t.distance),
+                  at: point(c, r + 24, s.heading), color: Theme.cyan, alpha: t.visibility)
     }
 
     private func drawLabel(_ ctx: GraphicsContext, _ text: String, at p: CGPoint, color: Color, alpha: Double) {

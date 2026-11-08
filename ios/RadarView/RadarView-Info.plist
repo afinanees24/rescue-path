@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged with the build-setting–generated Info.plist (GENERATE_INFOPLIST_FILE = YES). -->
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>FF Radar uses Ultra Wideband to measure the distance and direction to the beacon phone.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FF Radar finds the other phone on the local network to start the Ultra Wideband session.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>On some iPhones, Ultra Wideband needs the camera to work out which direction the beacon is in.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ff-uwb._tcp</string>
+		<string>_ff-uwb._udp</string>
+	</array>
+</dict>
+</plist>
